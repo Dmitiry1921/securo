@@ -467,6 +467,7 @@ async def test_propose_create_transaction_full(
     assert p["description"] == "Almoço"
     assert p["amount"] == 50.0
     assert p["type"] == "debit"
+    assert p["status"] == "posted"
     assert p["account_id"] == str(test_account.id)
     assert p["category_name"] == test_categories[0].name
     assert p["currency"] == "BRL"  # inherited from account
@@ -482,6 +483,30 @@ async def test_propose_create_transaction_unknown_account(
         description="x", amount=1.0, type="debit", account_id=str(uuid.uuid4()),
     )
     assert r["error"] == "account not found"
+
+
+async def test_propose_create_transaction_pending(
+    session: AsyncSession, test_user, test_account
+):
+    from app.models.transaction import Transaction
+
+    handler = REGISTRY["propose_create_transaction"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+    kwargs = {
+        "session": session,
+        "ctx": ctx,
+        "description": "Unpaid bill",
+        "amount": 100.0,
+        "type": "debit",
+        "account_id": str(test_account.id),
+        "status": "pending",
+    }
+    preview = await handler(**kwargs)
+    assert preview["proposed"]["status"] == "pending"
+    result = await handler(**kwargs, apply=True)
+    assert result["applied"] is True
+    row = await session.get(Transaction, uuid.UUID(result["id"]))
+    assert row.status == "pending"
 
 
 async def test_propose_create_recurring_monthly_requires_day(

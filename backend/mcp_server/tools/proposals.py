@@ -517,7 +517,8 @@ async def propose_create_budget(
     + (
         "Build a preview for adding a one-off transaction (e.g. 'add a "
         "R$50 lunch today'). Validates the account/category exist; "
-        "leaves currency to the account's default when not provided.\n\n"
+        "leaves currency to the account's default when not provided. "
+        "Use status=pending for a bill that has not been paid.\n\n"
         "Group splits: pass `group_id` + `splits` to attach a Splitwise-"
         "style breakdown. `splits.share_type='equal'` divides the amount "
         "evenly across the listed `member_ids` — perfect for 'crie no "
@@ -540,6 +541,7 @@ async def propose_create_budget(
                 "enum": ["debit", "credit"],
                 "description": "debit = expense, credit = income",
             },
+            "status": {"type": "string", "enum": ["posted", "pending"], "default": "posted"},
             "account_id": {"type": "string", "format": "uuid"},
             "pocket_id": {"type": "string", "format": "uuid", "description": "Optional pocket on this account; native account currency only"},
             "category_id": {"type": "string", "format": "uuid"},
@@ -596,6 +598,7 @@ async def propose_create_transaction(
     amount: float,
     type: str,
     account_id: str,
+    status: str = "posted",
     pocket_id: str | None = None,
     category_id: str | None = None,
     date: str | None = None,
@@ -605,6 +608,8 @@ async def propose_create_transaction(
     splits: dict[str, Any] | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
+    if status not in ("posted", "pending"):
+        return {"error": "status must be posted or pending"}
     await resolve_tool_workspace(session, ctx, write=True)
     ws_id = await resolve_workspace_id(session, ctx)
     acc_id = parse_uuid(account_id)
@@ -730,6 +735,7 @@ async def propose_create_transaction(
         "amount": float(amount),
         "currency": (currency or acc.currency or "USD").upper(),
         "type": type,
+        "status": status,
         "date": target_date.isoformat(),
         "account_id": str(acc.id),
         "account_name": acc.name,
@@ -783,6 +789,7 @@ async def propose_create_transaction(
                     amount=Decimal(str(amount)),
                     date=target_date,
                     type=type,
+                    status=status,
                     account_id=acc.id,
                     category_id=cat.id if cat else None,
                     currency=proposed["currency"],
