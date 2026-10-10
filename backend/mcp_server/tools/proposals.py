@@ -27,6 +27,7 @@ from app.models.category import Category
 from app.models.group import Group, GroupMember
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.transaction import Transaction
+from app.schemas.account import AccountCreate
 from app.schemas.budget import BudgetCreate
 from app.schemas.category import CategoryCreate
 from app.schemas.goal import GoalCreate
@@ -39,6 +40,7 @@ from app.schemas.rule import RuleAction, RuleCondition, RuleCreate
 from app.schemas.transaction import TransactionCreate
 from app.schemas.transaction_split import TransactionSplitInput, TransactionSplitsInput
 from app.services import (
+    account_service,
     budget_service,
     category_service,
     goal_service,
@@ -90,6 +92,127 @@ _APPLY_FIELD = {
 def _can_apply(ctx: CallContext, apply: bool) -> bool:
     """Gate: writes only happen when the caller is external AND set apply."""
     return bool(apply) and ctx.external
+
+
+@tool(
+    name="propose_create_account",
+    description=_PROPOSAL_PREFACE
+    + (
+        "Preview creation of a manual account. Supported types are checking, "
+        "savings, credit_card, investment, and wallet. The balance is the "
+        "opening balance; for credit cards, enter the amount owed as a "
+        "positive number."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "account_type": {
+                "type": "string",
+                "enum": [
+                    "checking",
+                    "savings",
+                    "credit_card",
+                    "investment",
+                    "wallet",
+                ],
+            },
+            "balance": {"type": "number", "default": 0},
+            "currency": {"type": "string", "default": "USD"},
+            "balance_date": {"type": "string", "format": "date"},
+            "credit_limit": {"type": "number", "minimum": 0},
+            "statement_close_day": {"type": "integer", "minimum": 1, "maximum": 31},
+            "payment_due_day": {"type": "integer", "minimum": 1, "maximum": 31},
+            "minimum_payment": {"type": "number", "minimum": 0},
+            "card_brand": {"type": "string"},
+            "card_level": {"type": "string"},
+            "apply": _APPLY_FIELD,
+        },
+        "required": ["name", "account_type"],
+        "additionalProperties": False,
+    },
+    is_proposal=True,
+    tags=["propose", "accounts"],
+)
+async def propose_create_account(
+    *,
+    session: AsyncSession,
+    ctx: CallContext,
+    name: str,
+    account_type: str,
+    balance: float = 0,
+    currency: str = "USD",
+    balance_date: str | None = None,
+    credit_limit: float | None = None,
+    statement_close_day: int | None = None,
+    payment_due_day: int | None = None,
+    minimum_payment: float | None = None,
+    card_brand: str | None = None,
+    card_level: str | None = None,
+    apply: bool = False,
+) -> dict[str, Any]:
+    if account_type not in {
+        "checking",
+        "savings",
+        "credit_card",
+        "investment",
+        "wallet",
+    }:
+        return {"error": "unsupported account type"}
+    if not name.strip():
+        return {"error": "account name is required"}
+
+    opening_balance = Decimal(str(balance))
+    opening_date = parse_date(balance_date) if balance_date else None
+    if balance_date and opening_date is None:
+        return {"error": "invalid balance_date"}
+
+    preview = {
+        "kind": "create_account",
+        "proposed": {
+            "name": name.strip(),
+            "type": account_type,
+            "balance": float(opening_balance),
+            "currency": currency,
+            "balance_date": opening_date.isoformat() if opening_date else None,
+            "credit_limit": credit_limit if account_type == "credit_card" else None,
+            "statement_close_day": (
+                statement_close_day if account_type == "credit_card" else None
+            ),
+            "payment_due_day": payment_due_day if account_type == "credit_card" else None,
+            "minimum_payment": minimum_payment if account_type == "credit_card" else None,
+            "card_brand": card_brand if account_type == "credit_card" else None,
+            "card_level": card_level if account_type == "credit_card" else None,
+        },
+        "apply_endpoint": "POST /api/accounts",
+    }
+
+    if _can_apply(ctx, apply):
+        created = await account_service.create_account(
+            session,
+            await resolve_workspace_id(session, ctx),
+            ctx.user_id,
+            AccountCreate(
+                name=name.strip(),
+                type=account_type,
+                balance=opening_balance,
+                currency=currency,
+                balance_date=opening_date,
+                credit_limit=(
+                    Decimal(str(credit_limit)) if credit_limit is not None else None
+                ),
+                statement_close_day=statement_close_day,
+                payment_due_day=payment_due_day,
+                minimum_payment=(
+                    Decimal(str(minimum_payment)) if minimum_payment is not None else None
+                ),
+                card_brand=card_brand,
+                card_level=card_level,
+            ),
+        )
+        return {**preview, "applied": True, "id": str(created.id)}
+
+    return preview
 
 
 @tool(

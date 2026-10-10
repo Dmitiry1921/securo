@@ -150,7 +150,14 @@ async def test_mcp_tools_list(test_user):
     tools = r.json()["result"]["tools"]
     names = {t["name"] for t in tools}
     # A representative sampling — these all live in mcp_server/tools/.
-    assert {"list_accounts", "list_categories", "list_payees", "aggregate", "list_groups"} <= names
+    assert {
+        "list_accounts",
+        "propose_create_account",
+        "list_categories",
+        "list_payees",
+        "aggregate",
+        "list_groups",
+    } <= names
 
 
 @pytest.mark.asyncio

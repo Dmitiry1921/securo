@@ -42,6 +42,7 @@ def test_registry_contains_v1_tools():
         "aggregate",
         "propose_categorize",
         "propose_create_category",
+        "propose_create_account",
         "propose_create_budget",
         "propose_create_payee_rule",
         "propose_create_transaction",
@@ -60,7 +61,13 @@ def test_registry_contains_v1_tools():
 
 
 def test_proposal_tools_marked_is_proposal():
-    for name in ("propose_categorize", "propose_create_category", "propose_create_budget", "propose_create_payee_rule"):
+    for name in (
+        "propose_categorize",
+        "propose_create_category",
+        "propose_create_account",
+        "propose_create_budget",
+        "propose_create_payee_rule",
+    ):
         spec = REGISTRY[name]
         assert spec.is_proposal, f"{name} should have is_proposal=True"
 
@@ -766,7 +773,7 @@ async def test_propose_create_category_external_apply_blocks_collision(
 ):
     """When the name collides with an existing category, apply must NOT
     create a duplicate — the preview already flagged it."""
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
     from app.models.category import Category
 
     handler = REGISTRY["propose_create_category"].handler
@@ -816,6 +823,64 @@ async def test_propose_create_budget_external_apply_writes(
     )).scalar_one()
     assert row.category_id == cat.id
     assert float(row.amount) == 500.0
+
+
+async def test_propose_create_account_preview_does_not_write(
+    session: AsyncSession, test_user
+):
+    from sqlalchemy import select, func
+    from app.models.account import Account
+
+    handler = REGISTRY["propose_create_account"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+    before = await session.scalar(select(func.count()).select_from(Account))
+    result = await handler(
+        session=session, ctx=ctx, name="Travel savings", account_type="savings"
+    )
+
+    assert result["kind"] == "create_account"
+    assert result["proposed"]["currency"] == "USD"
+    assert "applied" not in result
+    after = await session.scalar(select(func.count()).select_from(Account))
+    assert after == before
+
+
+async def test_propose_create_account_external_apply_writes_opening_balance(
+    session: AsyncSession, test_user
+):
+    from sqlalchemy import select
+    from app.models.account import Account
+    from app.models.transaction import Transaction
+
+    handler = REGISTRY["propose_create_account"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+    result = await handler(
+        session=session,
+        ctx=ctx,
+        name="BCA Checking",
+        account_type="checking",
+        balance=1250000,
+        currency="IDR",
+        apply=True,
+    )
+    assert result.get("applied") is True
+
+    account_id = uuid.UUID(result["id"])
+    account = (
+        await session.execute(select(Account).where(Account.id == account_id))
+    ).scalar_one()
+    assert account.name == "BCA Checking"
+    assert account.currency == "IDR"
+    opening = (
+        await session.execute(
+            select(Transaction).where(
+                Transaction.account_id == account_id,
+                Transaction.source == "opening_balance",
+            )
+        )
+    ).scalar_one()
+    assert float(opening.amount) == 1250000
+    assert opening.type == "credit"
 
 
 async def test_propose_create_transaction_external_apply_writes(
