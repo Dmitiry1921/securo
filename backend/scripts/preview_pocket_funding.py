@@ -246,6 +246,32 @@ async def run():
             )
         except ValueError as e:
             report["scheduled_pair_delete_rejected"] = str(e)
+        await transfer_schedule_service.save_schedule(
+            s,
+            w.id,
+            u.id,
+            TransferScheduleCreate(
+                from_account_id=a.id,
+                to_account_id=destination.id,
+                description="Due transfer without automatic salary or bills",
+                amount=1,
+                currency="USD",
+                frequency="months",
+                interval=1,
+                day_of_month=today.day,
+                start_date=today,
+            ),
+        )
+        from app.services.recurring_transaction_service import generate_pending
+
+        count = await generate_pending(s, u.id)
+        report["scheduled_transfer_without_auto_generated_bills"] = count
+        if count != 1:
+            raise RuntimeError("Due transfer was skipped when no bills auto-generate")
+        retry_count = await generate_pending(s, u.id)
+        report["scheduled_transfer_worker_retry_count"] = retry_count
+        if retry_count:
+            raise RuntimeError("Worker retry duplicated a transfer")
         print(json.dumps(report, indent=2))
     await engine.dispose()
 

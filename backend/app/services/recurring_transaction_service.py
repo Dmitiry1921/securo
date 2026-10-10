@@ -271,6 +271,7 @@ async def generate_pending(
     If up_to is None, defaults to today. This allows the dashboard to pre-generate
     transactions for future months when the user navigates ahead.
     Returns the count of transactions generated."""
+    from app.services.transfer_schedule_service import generate_pending as generate_transfers
     # A person's recurring rows may live in several workspaces, and each
     # workspace keeps its own calendar, so "today" is resolved per workspace.
     # The query is bounded by the latest of those days and the loop below
@@ -291,7 +292,8 @@ async def generate_pending(
         for ws_id in workspace_ids:
             cutoffs[ws_id] = today_in(await get_workspace_timezone(session, ws_id))
         if not cutoffs:
-            return 0
+            # Transfer plans are independent of automatic bill/income posting.
+            return await generate_transfers(session, user_id)
         latest_cutoff = max(cutoffs.values())
     else:
         latest_cutoff = up_to
@@ -397,6 +399,5 @@ async def generate_pending(
                 recurring.is_active = False
 
     await session.commit()
-    from app.services.transfer_schedule_service import generate_pending as generate_transfers
     count += await generate_transfers(session, user_id)
     return count
