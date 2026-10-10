@@ -948,7 +948,30 @@ export interface PocketMoveInput {
   idempotency_key: string
 }
 
+export type GoalRepeat = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'semiannual' | 'yearly'
+export interface GoalCompletion {
+  id: string
+  cycle_number: number
+  target_amount: number
+  saved_amount: number
+  currency: string
+  target_date: string | null
+  completed_on: string
+  spent_amount: number | null
+  spent_currency: string | null
+  spent_on: string | null
+  transaction_id: string | null
+}
+export interface GoalCompleteInput {
+  cycle_number: number
+  payment?: { pocket_id: string; amount: number; date: string; category_id?: string }
+  transaction_id?: string
+}
 export interface Goal {
+  repeat_frequency: GoalRepeat | null
+  cycle_number: number
+  next_target_date: string | null
+  last_completion: GoalCompletion | null
   valuation_available?: boolean
   id: string
   user_id: string

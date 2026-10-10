@@ -1171,6 +1171,7 @@ async def propose_cancel_recurring_transaction(
         "type": "object",
         "properties": {
             "name": {"type": "string", "minLength": 1, "maxLength": 255},
+            "repeat_frequency": {"type": "string", "enum": ["weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly"]},
             "tracking_type": {"type": "string", "enum": ["manual", "pockets"], "default": "manual"},
             "target_amount": {"type": "number", "exclusiveMinimum": 0},
             "currency": {"type": "string", "description": "Defaults to user's primary currency"},
@@ -1196,6 +1197,7 @@ async def propose_create_goal(
     ctx: CallContext,
     name: str,
     tracking_type: str = "manual",
+    repeat_frequency: str | None = None,
     target_amount: float,
     currency: str | None = None,
     deadline: str | None = None,
@@ -1214,6 +1216,7 @@ async def propose_create_goal(
         "kind": "create_goal",
         "proposed": {
             "tracking_type": tracking_type,
+            "repeat_frequency": repeat_frequency,
             "name": name.strip(),
             "target_amount": float(target_amount),
             "currency": resolved_currency,
@@ -1233,6 +1236,7 @@ async def propose_create_goal(
             ctx.user_id,
             GoalCreate(
                 tracking_type=tracking_type,
+                repeat_frequency=repeat_frequency,
                 name=name.strip(),
                 target_amount=Decimal(str(target_amount)),
                 current_amount=Decimal(str(resolved_initial)),

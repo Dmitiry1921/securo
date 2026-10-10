@@ -20,7 +20,7 @@ from app.models.import_log import ImportLog
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.rule import Rule
 from app.models.transaction import Transaction
-from app.models.goal import Goal
+from app.models.goal import Goal, GoalCompletion
 from app.models.pocket import Pocket, PocketMovement
 from app.schemas.export import BackupRequest
 from app.services.backup_service import build_backup_archive
@@ -64,6 +64,9 @@ async def _collect(ctx: WorkspaceContext, session: AsyncSession) -> dict[str, ob
         asset_values = []
 
     entities = {
+        "goal_completions": (await session.scalars(select(GoalCompletion).join(
+            Goal, Goal.id == GoalCompletion.goal_id,
+        ).where(Goal.workspace_id == ws_id))).all(),
         "goals": (await session.scalars(select(Goal).where(Goal.workspace_id == ws_id))).all(),
         "pockets": (await session.scalars(select(Pocket).where(Pocket.workspace_id == ws_id))).all(),
         "pocket_movements": (await session.scalars(select(PocketMovement).where(PocketMovement.workspace_id == ws_id))).all(),

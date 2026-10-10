@@ -3,7 +3,9 @@ from datetime import date as _Date, datetime
 from decimal import Decimal
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from app.schemas.recurring_transaction import RecurringFrequency
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class GoalCreate(BaseModel):
@@ -12,6 +14,7 @@ class GoalCreate(BaseModel):
     current_amount: Decimal = Decimal("0")
     currency: str = "USD"
     target_date: Optional[_Date] = None
+    repeat_frequency: Optional[RecurringFrequency] = None
     tracking_type: str = "manual"
     account_id: Optional[uuid.UUID] = None
     asset_id: Optional[uuid.UUID] = None
@@ -34,6 +37,7 @@ class GoalUpdate(BaseModel):
     current_amount: Optional[Decimal] = None
     currency: Optional[str] = None
     target_date: Optional[_Date] = None
+    repeat_frequency: Optional[RecurringFrequency] = None
     tracking_type: Optional[str] = None
     account_id: Optional[uuid.UUID] = None
     asset_id: Optional[uuid.UUID] = None
@@ -59,7 +63,52 @@ class GoalUpdate(BaseModel):
         return v
 
 
+class GoalCompletionRead(BaseModel):
+    id: uuid.UUID
+    cycle_number: int
+    target_amount: Decimal
+    saved_amount: Decimal
+    currency: str
+    target_date: Optional[_Date]
+    completed_on: _Date
+    spent_amount: Optional[Decimal] = None
+    spent_currency: Optional[str] = None
+    spent_on: Optional[_Date] = None
+    transaction_id: Optional[uuid.UUID]
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GoalPayment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    pocket_id: uuid.UUID
+    amount: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
+    date: _Date
+    category_id: Optional[uuid.UUID] = None
+
+
+class GoalComplete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_number: int = Field(ge=1)
+    payment: Optional[GoalPayment] = None
+    transaction_id: Optional[uuid.UUID] = None
+
+    @model_validator(mode="after")
+    def one_payment(self):
+        if self.payment and self.transaction_id:
+            raise ValueError("Choose a new payment OR an existing transaction")
+        return self
+
+
+class GoalRestart(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cycle_number: int = Field(ge=1)
+
+
 class GoalRead(BaseModel):
+    repeat_frequency: Optional[RecurringFrequency] = None
+    cycle_number: int = 1
+    next_target_date: Optional[_Date] = None
+    last_completion: Optional[GoalCompletionRead] = None
     valuation_available: bool = True
     id: uuid.UUID
     user_id: uuid.UUID

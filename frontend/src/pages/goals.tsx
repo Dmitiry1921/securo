@@ -1,3 +1,4 @@
+import { GoalCycleDialog } from '@/components/goal-cycle-dialog'
 import { createElement, useState } from 'react'
 import { getAccountName, sortAccountsByDisplayName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
@@ -24,7 +25,7 @@ import {
 import type { Account, Asset, AssetGroup, Goal } from '@/types'
 import {
   Pencil, Trash2, Plus, Pause, Play, CheckCircle2, Archive, ArchiveRestore, Target,
-  ChevronDown,
+  ChevronDown, History,
 } from 'lucide-react'
 import { ICON_MAP } from '@/lib/category-icons'
 import { IconPicker } from '@/components/icon-picker'
@@ -144,6 +145,7 @@ export default function GoalsPage() {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Goal | null>(null)
+  const [cycleDialog, setCycleDialog] = useState<{ goal: Goal; historyOnly?: boolean } | null>(null)
   const [trackingType, setTrackingType] = useState('manual')
   const [statusFilter, setStatusFilter] = useState<string>('active')
   const [deletingGoal, setDeletingGoal] = useState<Goal | null>(null)
@@ -184,7 +186,7 @@ export default function GoalsPage() {
       setDialogOpen(false)
       toast.success(t('goals.created'))
     },
-    onError: () => toast.error(t('common.error')),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('common.error')),
   })
 
   const updateMutation = useMutation({
@@ -195,7 +197,7 @@ export default function GoalsPage() {
       setEditing(null)
       toast.success(t('goals.updated'))
     },
-    onError: () => toast.error(t('common.error')),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('common.error')),
   })
 
   const deleteMutation = useMutation({
@@ -205,7 +207,7 @@ export default function GoalsPage() {
       setDeletingGoal(null)
       toast.success(t('goals.deleted'))
     },
-    onError: () => toast.error(t('common.error')),
+    onError: (err: unknown) => toast.error((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('common.error')),
   })
 
   const statusMutation = useMutation({
@@ -298,7 +300,7 @@ export default function GoalsPage() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="text-sm font-semibold text-foreground truncate">{goal.name}</span>
                         <StatusBadge status={goal.status} t={t} />
-                        <OnTrackBadge status={goal.on_track} t={t} />
+                        {goal.status !== 'completed' && <OnTrackBadge status={goal.on_track} t={t} />}
                       </div>
 
                       {/* Progress bar */}
@@ -321,12 +323,14 @@ export default function GoalsPage() {
                           {' / '}
                           {mask(formatCurrency(goal.target_amount, goal.currency, locale))}
                         </span>
-                        {goal.monthly_contribution != null && goal.monthly_contribution > 0 && (
+                        {goal.repeat_frequency && <span>{t(`goals.cycles.${goal.repeat_frequency}`)} · {t('goals.cycles.cycle', { count: goal.cycle_number })}</span>}
+                        {goal.status !== 'completed' && goal.valuation_available !== false && <span>{t('goals.cycles.remaining', { amount: mask(formatCurrency(Math.max(0, Number(goal.target_amount) - Number(goal.current_amount)), goal.currency, locale)) })}</span>}
+                        {goal.status !== 'completed' && goal.monthly_contribution != null && goal.monthly_contribution > 0 && (
                           <span className="tabular-nums">
                             {mask(formatCurrency(goal.monthly_contribution, goal.currency, locale))}{t('goals.perMonth')}
                           </span>
                         )}
-                        {days !== null && (
+                        {goal.status !== 'completed' && days !== null && (
                           <span className={days < 0 ? 'text-rose-500' : ''}>
                             {days >= 0
                               ? t('goals.daysRemaining', { count: days })
@@ -348,6 +352,9 @@ export default function GoalsPage() {
                       </div>
                     </div>
 
+                    <button className="p-1.5 rounded-md text-muted-foreground hover:text-primary" onClick={() => setCycleDialog({ goal, historyOnly: true })} title={t('goals.cycles.history')}>
+                      <History size={13} />
+                    </button>
                     {/* Actions */}
                     {canWrite && (
                       <div className="flex items-center gap-1 shrink-0">
@@ -372,7 +379,7 @@ export default function GoalsPage() {
                         {(goal.status === 'active' || goal.status === 'paused') && (
                           <button
                             className="p-1.5 rounded-md text-muted-foreground hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors"
-                            onClick={() => statusMutation.mutate({ id: goal.id, status: 'completed' })}
+                            onClick={() => setCycleDialog({ goal })}
                             title={t('goals.complete')}
                           >
                             <CheckCircle2 size={13} />
@@ -390,8 +397,8 @@ export default function GoalsPage() {
                         {(goal.status === 'completed' || goal.status === 'archived') && (
                           <button
                             className="p-1.5 rounded-md text-muted-foreground hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition-colors"
-                            onClick={() => statusMutation.mutate({ id: goal.id, status: 'active' })}
-                            title={t('goals.reactivate')}
+                            onClick={() => goal.repeat_frequency && (goal.status === 'completed' || goal.last_completion?.cycle_number === goal.cycle_number) ? setCycleDialog({ goal }) : statusMutation.mutate({ id: goal.id, status: 'active' })}
+                            title={goal.repeat_frequency ? t('goals.cycles.restart') : t('goals.reactivate')}
                           >
                             <ArchiveRestore size={13} />
                           </button>
@@ -422,6 +429,7 @@ export default function GoalsPage() {
         )}
       </SectionCard>
 
+      {cycleDialog && <GoalCycleDialog key={cycleDialog.goal.id} goal={cycleDialog.goal} historyOnly={cycleDialog.historyOnly} onClose={() => setCycleDialog(null)} />}
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={() => { setDialogOpen(false); setEditing(null) }}>
         <DialogContent>
@@ -439,6 +447,7 @@ export default function GoalsPage() {
                 currency: (formData.get('currency') as string) || userCurrency,
                 tracking_type: formData.get('tracking_type') as string,
                 target_date: targetDate || null,
+                repeat_frequency: formData.get('repeat_frequency') || null,
                 icon: selectedIcon || null,
                 color: selectedColor || null,
               }
@@ -569,6 +578,16 @@ export default function GoalsPage() {
               />
             )}
 
+            <div className="space-y-2">
+              <Label>{t('goals.cycles.repeat')}</Label>
+              <select name="repeat_frequency" defaultValue={editing?.repeat_frequency || ''} className={SELECT_CLASS}>
+                <option value="">{t('goals.cycles.once')}</option>
+                {['weekly', 'biweekly', 'monthly', 'quarterly', 'semiannual', 'yearly'].map(frequency => (
+                  <option key={frequency} value={frequency}>{t(`goals.cycles.${frequency}`)}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">{t('goals.cycles.scheduleHint')}</p>
+            </div>
             {/* Icon & Color */}
             <div className="space-y-2">
               <Label>{t('goals.icon')}</Label>

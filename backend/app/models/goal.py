@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -34,6 +34,10 @@ class Goal(Base):
     target_amount_primary: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
     current_amount_primary: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
     target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    repeat_frequency: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    repeat_anchor_day: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    cycle_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    cycle_started_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     tracking_type: Mapped[str] = mapped_column(String(20), default="manual")  # manual, account, asset, asset_group, net_worth
     account_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
     asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=True)
@@ -50,3 +54,24 @@ class Goal(Base):
     account: Mapped[Optional["Account"]] = relationship()
     asset: Mapped[Optional["Asset"]] = relationship()
     asset_group: Mapped[Optional["AssetGroup"]] = relationship()
+
+
+class GoalCompletion(Base):
+    """Immutable snapshot of a manually completed cycle; spending stays in the ledger."""
+    __tablename__ = "goal_completions"
+    __table_args__ = (UniqueConstraint("goal_id", "cycle_number"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    goal_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("goals.id", ondelete="CASCADE"), index=True)
+    cycle_number: Mapped[int] = mapped_column(Integer)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    saved_amount: Mapped[Decimal] = mapped_column(Numeric(15, 2))
+    currency: Mapped[str] = mapped_column(String(3))
+    target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    completed_on: Mapped[date] = mapped_column(Date)
+    spent_amount: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    spent_currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
+    spent_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True, unique=True
+    )

@@ -691,6 +691,8 @@ async def create_transaction(
     workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     data: TransactionCreate,
+    *,
+    commit: bool = True,
 ) -> Transaction:
     # Verify account belongs to the workspace
     account_result = await session.execute(
@@ -755,7 +757,7 @@ async def create_transaction(
     if data.amount_primary is not None or data.fx_rate_used is not None:
         _apply_fx_override(transaction, data.amount, data.amount_primary, data.fx_rate_used)
     else:
-        await stamp_primary_amount(session, user_id, transaction)
+        await stamp_primary_amount(session, user_id, transaction, allow_fetch=commit)
 
     if data.splits is not None:
         await split_service.replace_splits(session, transaction, data.splits, user_id)
@@ -767,7 +769,10 @@ async def create_transaction(
     # whose bank happens to be connected.
     await reconciliation_service.match_incoming(session, workspace_id, [transaction])
 
-    await session.commit()
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
     await session.refresh(transaction, ["category", "splits"])
     return transaction
 

@@ -14,6 +14,9 @@ export type ProposalKind =
   | 'update_recurring_transaction'
   | 'cancel_recurring_transaction'
   | 'create_goal'
+  | 'update_goal'
+  | 'complete_goal'
+  | 'restart_goal'
 
 export interface ProposalData {
   kind?: ProposalKind
@@ -38,7 +41,7 @@ export function isProposalData(data: unknown): data is ProposalData {
     'create_rule', 'update_rule', 'delete_rule',
     'create_transaction', 'create_recurring_transaction',
     'update_recurring_transaction', 'cancel_recurring_transaction',
-    'create_goal', 'pocket', 'assign_pocket', 'create_transfer',
+    'create_goal', 'update_goal', 'complete_goal', 'restart_goal', 'pocket', 'assign_pocket', 'create_transfer',
   ].includes(k)
 }
 

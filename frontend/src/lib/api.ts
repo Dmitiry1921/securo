@@ -75,6 +75,8 @@ import type {
   MarketSymbolQuote,
   Attachment,
   Goal,
+  GoalCompletion,
+  GoalCompleteInput,
   GoalSummary,
   DashboardSummary,
   SpendingByCategory,
@@ -1256,6 +1258,13 @@ export const pockets = {
 }
 
 export const goals = {
+  complete: async (id: string, input: GoalCompleteInput): Promise<Goal> => (await api.post(`/goals/${id}/complete`, input)).data,
+  restart: async (id: string, cycle_number: number): Promise<Goal> => (await api.post(`/goals/${id}/restart`, { cycle_number })).data,
+  history: async (id: string): Promise<GoalCompletion[]> => (await api.get(`/goals/${id}/history`)).data,
+  funding: async (id: string): Promise<{
+    pockets: { id: string; name: string; account_name: string; currency: string; available: string; needs_review: boolean }[]
+    payments: { id: string; description: string; date: string; amount: string; currency: string }[]
+  }> => (await api.get(`/goals/${id}/funding`)).data,
   list: async (status?: string): Promise<Goal[]> => {
     const { data } = await api.get('/goals', { params: { status } })
     return data

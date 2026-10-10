@@ -11,10 +11,13 @@ from app.core.config import get_settings
 from app.models.account import Account
 from app.models.asset import Asset
 from app.models.asset_group import AssetGroup
-from app.models.goal import Goal
+from app.models.goal import Goal, GoalCompletion
 from app.models.pocket import Pocket
 from app.models.user import User
-from app.schemas.goal import GoalCreate, GoalRead, GoalSummary, GoalUpdate
+from app.schemas.goal import (
+    GoalCreate, GoalRead, GoalSummary, GoalUpdate,
+    GoalComplete, GoalRestart, GoalCompletionRead,
+)
 from app.services.asset_service import _compute_current_value, _get_latest_value, get_asset_values_at
 from app.services.dashboard_service import _account_balance_at, _get_open_accounts
 from app.services.account_service import get_account_name
@@ -227,6 +230,9 @@ async def _enrich_goal(
     session: AsyncSession, goal: Goal, user_id: uuid.UUID
 ) -> GoalRead:
     """Enrich a goal with computed fields."""
+    last_completion = await session.scalar(select(GoalCompletion).where(
+        GoalCompletion.goal_id == goal.id,
+    ).order_by(GoalCompletion.cycle_number.desc()).limit(1))
     valuation_available = True
     try:
         current = await _resolve_current_amount(session, goal, user_id)
@@ -235,9 +241,12 @@ async def _enrich_goal(
             raise
         current = Decimal(0)
         valuation_available = False
+    if goal.status == "completed" and last_completion and last_completion.cycle_number == goal.cycle_number:
+        current = last_completion.saved_amount
+        valuation_available = True
     percentage = _compute_percentage(current, goal.target_amount)
     monthly = _compute_monthly_contribution(current, goal.target_amount, goal.target_date)
-    goal_start = goal.created_at.date() if goal.created_at else None
+    goal_start = goal.cycle_started_on or (goal.created_at.date() if goal.created_at else None)
     on_track = _compute_on_track(
         current, goal.target_amount, goal.target_date, goal_start, goal.initial_amount
     )
@@ -262,6 +271,10 @@ async def _enrich_goal(
             current_primary = await _convert_amount(session, current, goal.currency, primary_currency)
 
     return GoalRead(
+        repeat_frequency=goal.repeat_frequency,
+        cycle_number=goal.cycle_number,
+        next_target_date=_next_target_date(goal),
+        last_completion=GoalCompletionRead.model_validate(last_completion) if last_completion else None,
         valuation_available=valuation_available,
         id=goal.id,
         user_id=goal.user_id,
@@ -327,6 +340,7 @@ async def create_goal(
     user_id: uuid.UUID,
     data: GoalCreate,
 ) -> GoalRead:
+    _validate_repeat(data.repeat_frequency, data.target_date, data.tracking_type)
     await _ensure_goal_link_scope(session, workspace_id, data)
     goal = Goal(
         user_id=user_id,
@@ -336,6 +350,9 @@ async def create_goal(
         current_amount=data.current_amount,
         currency=data.currency,
         target_date=data.target_date,
+        repeat_frequency=data.repeat_frequency,
+        repeat_anchor_day=data.target_date.day if data.target_date else None,
+        cycle_started_on=app_today(),
         tracking_type=data.tracking_type,
         account_id=data.account_id,
         asset_id=data.asset_id,
@@ -362,18 +379,32 @@ async def update_goal(
     data: GoalUpdate,
 ) -> Optional[GoalRead]:
     result = await session.execute(
-        select(Goal).where(Goal.id == goal_id, Goal.workspace_id == workspace_id)
+        select(Goal).where(Goal.id == goal_id, Goal.workspace_id == workspace_id).with_for_update()
     )
     goal = result.scalar_one_or_none()
     if not goal:
         return None
+    completed_cycle = await session.scalar(select(GoalCompletion.id).where(
+        GoalCompletion.goal_id == goal.id, GoalCompletion.cycle_number == goal.cycle_number,
+    ))
+    if (goal.repeat_frequency or data.repeat_frequency) and data.status and (
+        data.status == "completed" or (completed_cycle and data.status == "active")
+    ):
+        raise ValueError("Use the complete or restart action for a recurring goal")
+    if completed_cycle and data.status == "active":
+        goal.cycle_number += 1
+        goal.cycle_started_on = app_today()
     await _ensure_goal_link_scope(session, workspace_id, data)
+    previous_target_date = goal.target_date
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "tracking_type" and value != "pockets" and goal.tracking_type == "pockets":
             linked = await session.scalar(select(Pocket.id).where(Pocket.goal_id == goal.id).limit(1))
             if linked:
                 raise ValueError("Unlink the goal's pockets before changing its tracking type")
         setattr(goal, field, value)
+    _validate_repeat(goal.repeat_frequency, goal.target_date, goal.tracking_type)
+    if goal.target_date != previous_target_date or goal.repeat_anchor_day is None:
+        goal.repeat_anchor_day = goal.target_date.day if goal.target_date else None
     _clear_inactive_tracking_links(goal)
     await session.commit()
     await session.refresh(goal)
@@ -414,7 +445,7 @@ async def get_goal_summary(
         current = enriched.current_amount
         percentage = _compute_percentage(current, goal.target_amount)
         monthly = _compute_monthly_contribution(current, goal.target_amount, goal.target_date)
-        goal_start = goal.created_at.date() if goal.created_at else None
+        goal_start = goal.cycle_started_on or (goal.created_at.date() if goal.created_at else None)
         on_track = _compute_on_track(
             current, goal.target_amount, goal.target_date, goal_start, goal.initial_amount
         )
@@ -434,3 +465,147 @@ async def get_goal_summary(
             on_track=on_track if enriched.valuation_available else None,
         ))
     return summaries
+
+
+
+def _validate_repeat(frequency, target_date, tracking_type):
+    if frequency and (not target_date or tracking_type not in ("manual", "pockets")):
+        raise ValueError("Repeating goals require a target date and manual or pocket tracking")
+
+
+def _next_target_date(goal):
+    if not goal.repeat_frequency or not goal.target_date:
+        return None
+    from app.services.recurring_transaction_service import _advance_date
+    return _advance_date(goal.target_date, goal.repeat_frequency, intended_day=goal.repeat_anchor_day)
+
+
+async def completion_history(session, workspace_id, goal_id):
+    goal = await session.scalar(select(Goal).where(Goal.id == goal_id, Goal.workspace_id == workspace_id))
+    if not goal:
+        raise ValueError("Goal not found")
+    rows = await session.scalars(select(GoalCompletion).where(
+        GoalCompletion.goal_id == goal_id,
+    ).order_by(GoalCompletion.cycle_number.desc()))
+    return [GoalCompletionRead.model_validate(row) for row in rows]
+
+
+async def complete_goal(session, workspace_id, user_id, goal_id, data: GoalComplete):
+    from app.models.transaction import Transaction
+    from app.schemas.transaction import TransactionCreate
+    from app.services import pocket_service, transaction_service
+    from app.services.fx_rate_service import _resolve_rate
+
+    goal = await session.scalar(select(Goal).where(
+        Goal.id == goal_id, Goal.workspace_id == workspace_id,
+    ).with_for_update())
+    if not goal:
+        raise ValueError("Goal not found")
+    # A stale/retried click must never charge the next cycle.
+    if goal.cycle_number != data.cycle_number or goal.status not in ("active", "paused"):
+        raise ValueError("Goal cycle already completed or changed; refresh the goal")
+    tx = None
+    if data.payment or data.transaction_id:
+        if goal.tracking_type != "pockets":
+            raise ValueError("Payment completion requires pocket tracking")
+        if data.transaction_id:
+            tx = await session.scalar(select(Transaction).where(
+                Transaction.id == data.transaction_id, Transaction.workspace_id == workspace_id,
+            ).with_for_update())
+            if (not tx or tx.type != "debit" or tx.status != "posted" or tx.is_ignored
+                    or tx.transfer_pair_id or tx.exclude_from_pnl or tx.amount <= 0 or tx.date > app_today()):
+                raise ValueError("Select an existing posted expense from a linked pocket")
+            if await session.scalar(select(GoalCompletion.id).where(GoalCompletion.transaction_id == tx.id)):
+                raise ValueError("This payment already completed another cycle")
+        pocket_id = data.payment.pocket_id if data.payment else tx.pocket_id
+        pocket = await session.scalar(select(Pocket).where(
+            Pocket.id == pocket_id, Pocket.workspace_id == workspace_id, Pocket.goal_id == goal.id,
+        ))
+        if not pocket:
+            raise ValueError("Payment must use a pocket linked to this goal")
+        account = await pocket_service.account(session, workspace_id, pocket.account_id, lock=True)
+        if data.payment:
+            if data.payment.date > app_today():
+                raise ValueError("A completed payment cannot be in the future")
+            state = await pocket_service.get_account_pockets(session, workspace_id, account.id)
+            balance = next(p for p in state.items if p.id == pocket.id)
+            if state.needs_review or balance.needs_review or data.payment.amount > balance.available:
+                raise ValueError("Not enough available money in this pocket")
+    current = await _resolve_current_amount(session, goal, user_id)
+    if tx:
+        rate = await _resolve_rate(session, tx.currency, goal.currency, allow_fetch=False)
+        if rate is None:
+            raise ValueError("Exchange rate unavailable")
+        current += tx.amount * rate
+    if data.payment:
+        tx = await transaction_service.create_transaction(session, workspace_id, user_id, TransactionCreate(
+            description=goal.name, amount=data.payment.amount, date=data.payment.date,
+            type="debit", status="posted", currency=account.currency,
+            account_id=account.id, pocket_id=pocket.id, category_id=data.payment.category_id,
+        ), commit=False)
+    session.add(GoalCompletion(
+        goal_id=goal.id, cycle_number=goal.cycle_number, target_amount=goal.target_amount,
+        saved_amount=current, currency=goal.currency, target_date=goal.target_date,
+        completed_on=app_today(), transaction_id=tx.id if tx else None,
+        spent_amount=tx.amount if tx else None, spent_currency=tx.currency if tx else None,
+        spent_on=tx.date if tx else None,
+    ))
+    goal.status = "completed"
+    await session.commit()
+    await session.refresh(goal)
+    return await _enrich_goal(session, goal, user_id)
+
+
+async def restart_goal(session, workspace_id, user_id, goal_id, data: GoalRestart):
+    goal = await session.scalar(select(Goal).where(
+        Goal.id == goal_id, Goal.workspace_id == workspace_id,
+    ).with_for_update())
+    if not goal:
+        raise ValueError("Goal not found")
+    if goal.status not in ("completed", "archived") or goal.cycle_number != data.cycle_number:
+        raise ValueError("Complete the current cycle before restarting; refresh the goal")
+    if goal.status == "archived" and not await session.scalar(select(GoalCompletion.id).where(
+        GoalCompletion.goal_id == goal.id, GoalCompletion.cycle_number == goal.cycle_number,
+    )):
+        raise ValueError("Complete the current cycle before restarting")
+    next_date = _next_target_date(goal)
+    if not next_date:
+        raise ValueError("Configure repetition and a target date first")
+    goal.target_date = next_date
+    goal.cycle_number += 1
+    goal.cycle_started_on = app_today()
+    goal.status = "active"
+    if goal.tracking_type == "manual":
+        goal.current_amount = Decimal(0)
+    goal.initial_amount = await _resolve_current_amount(session, goal, user_id)
+    await session.commit()
+    await session.refresh(goal)
+    return await _enrich_goal(session, goal, user_id)
+
+
+async def goal_funding(session, workspace_id, goal_id):
+    from app.models.transaction import Transaction
+    from app.services import pocket_service
+    goal = await session.scalar(select(Goal).where(Goal.id == goal_id, Goal.workspace_id == workspace_id))
+    if not goal:
+        raise ValueError("Goal not found")
+    pockets = []
+    account_ids = await session.scalars(select(Pocket.account_id).where(
+        Pocket.goal_id == goal_id, Pocket.workspace_id == workspace_id,
+    ).distinct())
+    for account_id in account_ids:
+        account = await pocket_service.account(session, workspace_id, account_id)
+        state = await pocket_service.get_account_pockets(session, workspace_id, account_id)
+        for pocket in state.items:
+            if pocket.goal_id == goal_id and not pocket.archived:
+                pockets.append({**pocket.model_dump(mode="json"), "account_name": get_account_name(account)})
+    rows = await session.scalars(select(Transaction).join(Pocket, Pocket.id == Transaction.pocket_id).where(
+        Pocket.goal_id == goal_id, Transaction.workspace_id == workspace_id,
+        Transaction.type == "debit", Transaction.status == "posted", Transaction.is_ignored.is_(False),
+        Transaction.exclude_from_pnl.is_(False), Transaction.amount > 0,
+        Transaction.transfer_pair_id.is_(None), Transaction.date <= app_today(),
+        ~select(GoalCompletion.id).where(GoalCompletion.transaction_id == Transaction.id).exists(),
+    ).order_by(Transaction.date.desc()).limit(100))
+    payments = [{"id": str(tx.id), "description": tx.description, "date": tx.date.isoformat(),
+                 "amount": str(tx.amount), "currency": tx.currency} for tx in rows]
+    return {"pockets": pockets, "payments": payments}

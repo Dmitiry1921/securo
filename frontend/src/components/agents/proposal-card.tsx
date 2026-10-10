@@ -235,6 +235,12 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
       return t(d.mode === 'delete' ? 'agents.proposal.summary.deleteRecurring' : 'agents.proposal.summary.deactivateRecurring', {
         description: String(tgt.description ?? '?'),
       })
+    case 'update_goal':
+      return [t('goals.cycles.update'), String(tgt.name), p.target_amount ? fmt(p.target_amount, p.currency || tgt.currency) : '', p.target_date || '', 'repeat_frequency' in p ? t(`goals.cycles.${p.repeat_frequency || 'once'}`) : ''].filter(Boolean).join(' · ')
+    case 'complete_goal':
+      return [t('goals.complete'), String(tgt.name), p.payment ? `${t('goals.cycles.recordPayment')}: ${fmt((p.payment as Record<string, unknown>).amount, tgt.payment_currency)}` : t(p.transaction_id ? 'goals.cycles.existingPayment' : 'goals.cycles.noPayment')].join(' · ')
+    case 'restart_goal':
+      return `${t('goals.cycles.restart')}: ${String(tgt.name)}`
     case 'create_goal':
       return t('agents.proposal.summary.createGoal', {
         name: String(p.name ?? '?'),
@@ -411,6 +417,15 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
       }
       return id
     }
+    case 'update_goal':
+      await goals.update(String(data.target?.id), p)
+      return String(data.target?.id)
+    case 'complete_goal':
+      await goals.complete(String(data.target?.id), p as unknown as Parameters<typeof goals.complete>[1])
+      return String(data.target?.id)
+    case 'restart_goal':
+      await goals.restart(String(data.target?.id), Number(p.cycle_number))
+      return String(data.target?.id)
     case 'create_goal': {
       const g = await goals.create({
         name: String(p.name),
@@ -419,6 +434,7 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         target_date: (p.deadline as string) || undefined,
         current_amount: (p.initial_amount as number) ?? undefined,
         tracking_type: p.tracking_type as 'manual' | 'pockets' || 'manual',
+        repeat_frequency: p.repeat_frequency as Parameters<typeof goals.create>[0]['repeat_frequency'],
         icon: (p.icon as string) || undefined,
         color: (p.color as string) || undefined,
       } as Parameters<typeof goals.create>[0])

@@ -14,6 +14,7 @@ from mcp_server.tools import (  # noqa: F401
     proposals,
     knowledge,
     lifecycle,
+    goals,
     groups,
     rules,
 )
