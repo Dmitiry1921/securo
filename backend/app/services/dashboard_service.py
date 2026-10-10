@@ -147,6 +147,10 @@ async def _get_recurring_projections(
                 "currency": rec.currency,
                 "date": occ_date,
             })
+    if include_transfer_like:
+        from app.services.transfer_schedule_service import projections as transfer_projections
+        transfers = await transfer_projections(session, workspace_id, month_start, month_end, "USD", account_ids)
+        projections.extend({**row, "date": date.fromisoformat(row["date"])} for row in transfers)
     return projections
 
 
@@ -1164,6 +1168,9 @@ async def get_projected_transactions(
                 category_color=cat_color,
             ))
 
+    from app.services.transfer_schedule_service import projections as transfer_projections
+    transfers = await transfer_projections(session, workspace_id, range_start, range_end, primary_currency, [account_id] if account_id else None)
+    projections.extend(ProjectedTransaction(**row) for row in transfers)
     return projections
 
 
@@ -1650,7 +1657,7 @@ async def get_balance_history(
             proj_deltas[tx.date.day] = proj_deltas.get(tx.date.day, 0) + float(converted)
 
         projections = await _get_recurring_projections(
-            session, workspace_id, proj_start, month_end, account_ids
+            session, workspace_id, proj_start, month_end, account_ids, include_transfer_like=True
         )
         for proj in projections:
             day = proj["date"].day

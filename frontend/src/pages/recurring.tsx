@@ -1,3 +1,4 @@
+import { TransferSchedules } from '@/components/transfer-schedules'
 import React, { useMemo, useState } from 'react'
 import { getAccountName, sortAccountsByDisplayName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +57,7 @@ export default function RecurringPage() {
     <div>
       <PageHeader section={t('recurring.title')} title={t('recurring.title')} />
       <RecurringTab />
+      <TransferSchedules />
     </div>
   )
 }

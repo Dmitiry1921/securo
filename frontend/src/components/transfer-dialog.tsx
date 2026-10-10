@@ -29,6 +29,7 @@ export function TransferDialog({
   onClose: () => void
   accounts: Account[]
   onSave: (data: {
+    status?: 'pending' | 'posted'
     from_pocket_id?: string | null
     to_pocket_id?: string | null
     from_account_id: string
@@ -52,6 +53,7 @@ export function TransferDialog({
   const [description, setDescription] = useState('')
   const [notes, setNotes] = useState('')
   const [destinationAmount, setDestinationAmount] = useState('')
+  const [status, setStatus] = useState<'pending' | 'posted'>('posted')
   const [fromPocket, setFromPocket] = useState('')
   const [toPocket, setToPocket] = useState('')
 
@@ -68,6 +70,7 @@ export function TransferDialog({
       setDestinationAmount('')
       setFromPocket('')
       setToPocket('')
+      setStatus('posted')
     }
   }
 
@@ -88,6 +91,7 @@ export function TransferDialog({
           onSubmit={(e) => {
             e.preventDefault()
             onSave({
+              status,
               from_account_id: fromAccountId,
               from_pocket_id: fromPocket || null,
               to_pocket_id: toPocket || null,
@@ -229,6 +233,13 @@ export function TransferDialog({
             />
           </div>
 
+          <div className="space-y-2">
+            <Label>{t('transactions.status')}</Label>
+            <select className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm" value={status} onChange={e => setStatus(e.target.value as 'posted' | 'pending')}>
+              <option value="posted">{t('transfers.posted')}</option>
+              <option value="pending">{t('transfers.pending')}</option>
+            </select>
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               {t('common.cancel')}

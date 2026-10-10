@@ -60,6 +60,7 @@ class BalanceHistory(BaseModel):
 
 
 class ProjectedTransaction(BaseModel):
+    transfer_pair_id: Optional[str] = None
     recurring_id: str
     account_id: Optional[str] = None
     description: str

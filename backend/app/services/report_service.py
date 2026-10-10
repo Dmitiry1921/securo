@@ -17,6 +17,7 @@ from app.models.category import Category
 from app.models.user import User
 from app.services._query_filters import (
     counts_as_pnl,
+    is_not_ignored,
     counts_as_user_pnl,
     owner_split_offset_by_category,
     reporting_date_col,
@@ -1579,6 +1580,38 @@ async def get_cash_flow_report(
                 continue
             _add_flow(claim.due_date, abs(claim_primary), claim.direction == "receivable")
 
+    # Internal transfers move account balances without becoming P&L. Carry
+    # them separately from the income/expense series and category breakdown.
+    transfer_deltas: dict[date, float] = {}
+    transfer_rows = await session.scalars(select(Transaction).join(Account).where(
+        Transaction.workspace_id == workspace_id, Account.is_closed == False,
+        Transaction.transfer_pair_id.is_not(None), Transaction.status == "posted",
+        flow_date_col > chart_start, flow_date_col <= end,
+        is_not_ignored(), *acct_filter,
+    ))
+    for tx in transfer_rows:
+        on = tx.effective_date if accrual else tx.date
+        amount = float(tx.amount_primary) if tx.amount_primary is not None else await _to_primary(tx.amount, tx.currency)
+        transfer_deltas[on] = transfer_deltas.get(on, 0.0) + amount * (1 if tx.type == "credit" else -1)
+    for tx in pending_forecast:
+        if tx.status != "pending" or not tx.transfer_pair_id or tx.is_ignored or (tx.category and tx.category.is_ignored):
+            continue
+        on = tx.effective_date if accrual else tx.date
+        amount = float(tx.amount_primary) if tx.amount_primary is not None else await _to_primary(tx.amount, tx.currency)
+        signed = amount * (1 if tx.type == "credit" else -1)
+        if on <= today:
+            pending_current_delta += signed
+        else:
+            transfer_deltas[on] = transfer_deltas.get(on, 0.0) + signed
+    from app.services.transfer_schedule_service import projections as transfer_projections
+    for row in await transfer_projections(session, workspace_id, date.min, end + timedelta(days=1), primary_currency, account_ids):
+        on = date.fromisoformat(row["date"])
+        signed = (row["amount_primary"] or 0.0) * (1 if row["type"] == "credit" else -1)
+        if on <= today:
+            pending_current_delta += signed
+        else:
+            transfer_deltas[on] = transfer_deltas.get(on, 0.0) + signed
+
     # 4. Walk day-by-day. The actual section is anchored at today's
     # authoritative balance. The forward projected section starts from that
     # balance plus pending payables already dated today or earlier.
@@ -1604,7 +1637,7 @@ async def get_cash_flow_report(
     cursor_d = today
     while cursor_d > chart_start:
         bucket = flows.get(cursor_d, {"inflow": 0.0, "outflow": 0.0})
-        running -= bucket["inflow"] - bucket["outflow"]
+        running -= bucket["inflow"] - bucket["outflow"] + transfer_deltas.get(cursor_d, 0.0)
         cursor_d = cursor_d - timedelta(days=1)
         daily_balance[cursor_d] = running
         prev_bucket = flows.get(cursor_d, {"inflow": 0.0, "outflow": 0.0})
@@ -1619,7 +1652,7 @@ async def get_cash_flow_report(
     while cursor_d < end:
         cursor_d = cursor_d + timedelta(days=1)
         bucket = flows.get(cursor_d, {"inflow": 0.0, "outflow": 0.0})
-        running += bucket["inflow"] - bucket["outflow"]
+        running += bucket["inflow"] - bucket["outflow"] + transfer_deltas.get(cursor_d, 0.0)
         daily_balance[cursor_d] = running
         daily_inflow[cursor_d] = bucket["inflow"]
         daily_outflow[cursor_d] = bucket["outflow"]

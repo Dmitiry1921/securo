@@ -625,6 +625,7 @@ export interface RecurringTransaction {
 }
 
 export interface ProjectedTransaction {
+  transfer_pair_id?: string | null
   recurring_id: string
   account_id: string | null
   description: string
@@ -1828,4 +1829,22 @@ export interface ReconciliationHistoryEvent {
   user_id?: string | null
   transaction_id?: string | null
   transaction_description?: string | null
+}
+
+export interface TransferSchedule {
+  id: string
+  from_account_id: string
+  to_account_id: string
+  from_pocket_id: string | null
+  to_pocket_id: string | null
+  description: string
+  notes: string | null
+  amount: number
+  currency: string
+  frequency: 'days' | 'months'
+  interval: number
+  day_of_month: number | null
+  start_date: string
+  end_date: string | null
+  is_active: boolean
 }

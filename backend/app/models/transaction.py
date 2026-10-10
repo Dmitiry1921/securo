@@ -3,7 +3,7 @@ from datetime import date as _date, datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional, cast
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, JSON, Numeric, SmallInteger, String, event
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, JSON, Numeric, SmallInteger, String, UniqueConstraint, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 
 class Transaction(Base):
     __tablename__ = "transactions"
+    __table_args__ = (UniqueConstraint("transfer_schedule_id", "transfer_occurrence_date", "type", name="uq_transfer_occurrence_leg"),)
+
+    transfer_schedule_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("transfer_schedules.id", ondelete="SET NULL"), index=True)
+    transfer_occurrence_date: Mapped[Optional[_date]] = mapped_column(Date)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))

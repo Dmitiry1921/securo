@@ -583,6 +583,7 @@ export const transactions = {
     return data
   },
   createTransfer: async (transfer: {
+    status?: 'pending' | 'posted'
     from_pocket_id?: string | null
     to_pocket_id?: string | null
     from_account_id: string
@@ -2293,4 +2294,13 @@ export const publicInvoices = {
     return data
   },
   pdfUrl: (token: string): string => `/api/public/invoices/${token}/pdf`,
+}
+
+export const transferSchedules = {
+  pending: async (): Promise<{ id: string; debit: { amount: number; currency: string; date: string; account: string; description: string }; credit: { amount: number; currency: string; date: string; account: string; description: string } }[]> => (await api.get('/transfer-schedules/pending')).data,
+  list: async (): Promise<import('@/types').TransferSchedule[]> => (await api.get('/transfer-schedules')).data,
+  create: async (data: Omit<import('@/types').TransferSchedule, 'id'>): Promise<import('@/types').TransferSchedule> => (await api.post('/transfer-schedules', data)).data,
+  update: async (id: string, data: Omit<import('@/types').TransferSchedule, 'id'>): Promise<import('@/types').TransferSchedule> => (await api.put(`/transfer-schedules/${id}`, data)).data,
+  materialize: async (id: string, date: string) => (await api.post(`/transfer-schedules/${id}/materialize`, { date })).data,
+  confirm: async (id: string, data: { amount: number; destination_amount: number; date: string }) => (await api.post(`/transfer-schedules/pairs/${id}/confirm`, data)).data,
 }

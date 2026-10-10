@@ -887,6 +887,8 @@ async def create_transfer(
     workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     data: TransferCreate,
+    *,
+    commit: bool = True,
 ) -> tuple[Transaction, Transaction]:
     if data.from_account_id == data.to_account_id:
         raise ValueError("Cannot transfer to the same account")
@@ -953,8 +955,15 @@ async def create_transfer(
             workspace_id=workspace_id, account_id=acc.id, pocket_id=pocket_id,
             currency=acc.currency, date=data.date, amount=debit_amount,
         ))
-    if is_cross_currency and (data.from_pocket_id or data.to_pocket_id) and data.destination_amount is None:
+    if is_cross_currency and (data.from_pocket_id or data.to_pocket_id) and data.destination_amount is None and data.status == "posted":
         raise ValueError("Enter the actual destination amount for a cross-currency pocket transfer")
+
+    planned_rate = None
+    if is_cross_currency and data.destination_amount is None and data.status == "pending":
+        from app.services.fx_rate_service import _resolve_rate
+        planned_rate = await _resolve_rate(session, from_account.currency, to_account.currency, data.date, allow_fetch=False)
+        if planned_rate is None:
+            raise ValueError("Exchange rate unavailable; enter a destination amount")
 
     # Debit transaction (from account)
     debit_tx = Transaction(
@@ -968,6 +977,7 @@ async def create_transfer(
         date=data.date,
         type="debit",
         source="transfer",
+        status=data.status,
         notes=data.notes,
         transfer_pair_id=transfer_pair_id,
         transfer_amount_explicit=amount_is_explicit,
@@ -979,6 +989,8 @@ async def create_transfer(
     if is_cross_currency:
         if data.destination_amount is not None:
             credit_amount = _to_cents(data.destination_amount)
+        elif planned_rate is not None:
+            credit_amount = _to_cents(debit_amount * planned_rate)
         else:
             credit_amount, _ = await fx_convert(
                 session, debit_amount, from_account.currency, to_account.currency, data.date
@@ -997,6 +1009,7 @@ async def create_transfer(
         date=data.date,
         type="credit",
         source="transfer",
+        status=data.status,
         notes=data.notes,
         transfer_pair_id=transfer_pair_id,
         transfer_amount_explicit=amount_is_explicit,
@@ -1006,8 +1019,8 @@ async def create_transfer(
     await session.flush()
 
     # Stamp primary amounts on both
-    await stamp_primary_amount(session, user_id, debit_tx)
-    await stamp_primary_amount(session, user_id, credit_tx)
+    await stamp_primary_amount(session, user_id, debit_tx, allow_fetch=False)
+    await stamp_primary_amount(session, user_id, credit_tx, allow_fetch=False)
 
     # For cross-currency transfers, both sides should show the same primary amount
     if from_account.currency != to_account.currency and debit_tx.amount_primary is not None:
@@ -1015,7 +1028,8 @@ async def create_transfer(
         if credit_tx.amount and Decimal(str(credit_tx.amount)):
             credit_tx.fx_rate_used = debit_tx.amount_primary / Decimal(str(credit_tx.amount))
 
-    await session.commit()
+    if commit:
+        await session.commit()
     await session.refresh(debit_tx, ["category"])
     await session.refresh(credit_tx, ["category"])
     return debit_tx, credit_tx
@@ -1480,7 +1494,7 @@ async def _apply_update_to_row(
         apply_effective_date(tx, account_for_tx)
 
     # Cascade changes to paired transfer transaction
-    cascade_fields = {"amount", "date", "description", "notes"}
+    cascade_fields = {"amount", "date", "description", "notes", "status"}
     should_cascade_category = apply_to_transfer_pair and "category_id" in update_data
     if tx.transfer_pair_id and ((cascade_fields & update_data.keys()) or should_cascade_category):
         paired = await session.execute(
@@ -1520,6 +1534,12 @@ async def _apply_update_to_row(
                 else:
                     paired_tx.amount = update_data[key]
             await stamp_primary_amount(session, user_id, paired_tx)
+            if "status" in update_data and tx.currency != paired_tx.currency:
+                debit = tx if tx.type == "debit" else paired_tx
+                credit = paired_tx if tx.type == "debit" else tx
+                if debit.amount_primary is not None and credit.amount:
+                    credit.amount_primary = debit.amount_primary
+                    credit.fx_rate_used = debit.amount_primary / credit.amount
             if "date" in update_data:
                 paired_account = await session.get(Account, paired_tx.account_id)
                 apply_effective_date(paired_tx, paired_account)

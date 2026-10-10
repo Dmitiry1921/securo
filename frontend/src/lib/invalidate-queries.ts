@@ -17,6 +17,8 @@ export function invalidateCategoryQueries(queryClient: QueryClient) {
 }
 
 export function invalidateFinancialQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({ queryKey: ['pendingTransfers'] })
+  queryClient.invalidateQueries({ queryKey: ['transferSchedules'] })
   queryClient.invalidateQueries({ queryKey: ['pockets'] })
   queryClient.invalidateQueries({ queryKey: ['goals'] })
   queryClient.invalidateQueries({ queryKey: ['transactions'] })
