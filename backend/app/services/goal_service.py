@@ -91,6 +91,28 @@ async def _resolve_current_amount(
                     if pocket.needs_review:
                         raise ValueError("Pocket valuation unavailable")
                     total += pocket.available * rate
+        # Reserving an internal transfer between two pockets of this goal
+        # moves the savings, it does not spend them. The pending destination
+        # is not yet in its pocket balance, so retain the source reservation.
+        from sqlalchemy.orm import aliased
+        from app.models.transaction import Transaction
+        destination = aliased(Transaction)
+        source_pocket = aliased(Pocket)
+        destination_pocket = aliased(Pocket)
+        retained = await session.scalars(select(Transaction).join(
+            source_pocket, source_pocket.id == Transaction.pocket_id,
+        ).join(destination, (destination.transfer_pair_id == Transaction.transfer_pair_id)
+               & (destination.type == "credit") & (destination.status == "pending"))
+        .join(destination_pocket, destination_pocket.id == destination.pocket_id).where(
+            Transaction.workspace_id == workspace_id, Transaction.type == "debit",
+            Transaction.status == "pending", source_pocket.goal_id == goal.id,
+            destination_pocket.goal_id == goal.id,
+        ))
+        for tx in retained:
+            rate = await _resolve_rate(session, tx.currency, goal.currency, allow_fetch=False)
+            if rate is None:
+                raise ValueError("Pocket valuation unavailable")
+            total += tx.amount * rate
         return total.quantize(Decimal("0.01"))
 
     if goal.tracking_type == "account" and goal.account_id:

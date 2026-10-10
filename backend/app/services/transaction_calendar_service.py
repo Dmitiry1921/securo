@@ -518,4 +518,19 @@ async def _project_recurring_items(
             # balance that reverts the day the recurring actually posts.
             if not is_ignored:
                 deltas[occ_date] = deltas.get(occ_date, 0.0) + signed_delta
+    from app.services.transfer_schedule_service import projections as transfer_projections
+    for row in await transfer_projections(session, workspace_id, date.min, end, primary_currency, account_ids):
+        on = date.fromisoformat(row["date"])
+        signed = (row["amount_primary"] or 0) * (1 if row["type"] == "credit" else -1)
+        if on < start:
+            carried_delta += signed
+            continue
+        items.append((TransactionCalendarItem(
+            kind="projected", recurring_id=uuid.UUID(row["recurring_id"]), date=on,
+            description=row["description"], amount=row["amount"], amount_primary=row["amount_primary"],
+            currency=row["currency"], type=row["type"], account_id=uuid.UUID(row["account_id"]),
+            account_name=row["account_name"], source="transfer", is_transfer=True,
+            transfer_pair_id=uuid.UUID(row["transfer_pair_id"]),
+        ), signed))
+        deltas[on] = deltas.get(on, 0.0) + signed
     return items, deltas, carried_delta

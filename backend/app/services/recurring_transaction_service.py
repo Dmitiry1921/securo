@@ -397,4 +397,6 @@ async def generate_pending(
                 recurring.is_active = False
 
     await session.commit()
+    from app.services.transfer_schedule_service import generate_pending as generate_transfers
+    count += await generate_transfers(session, user_id)
     return count

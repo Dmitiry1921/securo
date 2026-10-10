@@ -134,7 +134,7 @@ async def propose_assign_pocket(
 @tool(
     name="propose_transfer",
     description=_PROPOSAL_PREFACE
-    + "Record a real bank transfer with optional source/destination pockets. Cross-currency pocket transfers require the actual destination_amount. This creates both transaction legs atomically; it does not initiate a transfer at a bank.",
+    + "Record a bank transfer with optional source/destination pockets. Set status=pending to plan a transfer without changing actual balances. Cross-currency pocket transfers require the actual destination_amount. This creates both transaction legs atomically; it does not initiate a transfer at a bank.",
     parameters={
         "type": "object",
         "properties": {"data": TransferCreate.model_json_schema(), "apply": _APPLY_FIELD},

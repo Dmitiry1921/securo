@@ -18,6 +18,7 @@ from app.models.category import Category
 from app.models.category_group import CategoryGroup
 from app.models.import_log import ImportLog
 from app.models.recurring_transaction import RecurringTransaction
+from app.models.transfer_schedule import TransferSchedule
 from app.models.rule import Rule
 from app.models.transaction import Transaction
 from app.models.goal import Goal, GoalCompletion
@@ -64,6 +65,7 @@ async def _collect(ctx: WorkspaceContext, session: AsyncSession) -> dict[str, ob
         asset_values = []
 
     entities = {
+        "transfer_schedules": (await session.scalars(select(TransferSchedule).where(TransferSchedule.workspace_id == ws_id))).all(),
         "goal_completions": (await session.scalars(select(GoalCompletion).join(
             Goal, Goal.id == GoalCompletion.goal_id,
         ).where(Goal.workspace_id == ws_id))).all(),

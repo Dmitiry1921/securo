@@ -2915,5 +2915,29 @@
       "recurring": "Recurring rules",
       "recurringHint": "How we decide that a charge is the bill you were already expecting."
     }
+  },
+  "transfers": {
+    "title": "Planned transfers",
+    "add": "Add transfer plan",
+    "help": "Internal transfers appear on both accounts. Due occurrences become Pending; confirm only after the bank transfer has happened.",
+    "paused": "Paused",
+    "everyDays": "Every {{count}} days",
+    "everyMonths": "Every {{count}} months, day {{day}}",
+    "pending": "Pending",
+    "posted": "Completed",
+    "confirm": "Confirm transfer",
+    "fixedCurrency": "Fixed amount currency",
+    "interval": "Repeat every",
+    "unit": "Unit",
+    "days": "Days",
+    "months": "Months",
+    "day": "Day of month",
+    "shortMonth": "In shorter months, use the last day. Other months keep your chosen day.",
+    "start": "Start date",
+    "end": "End date (optional)",
+    "active": "Active schedule",
+    "confirmHelp": "Enter the amounts that actually left and arrived. Confirming posts both sides together.",
+    "actualSource": "Actually sent",
+    "actualDestination": "Actually received"
   }
 }

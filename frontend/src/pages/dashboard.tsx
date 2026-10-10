@@ -568,7 +568,7 @@ export default function DashboardPage() {
     }
     for (const pt of projectedTxs ?? []) {
       rows.push({
-        key: `proj-${pt.recurring_id}-${pt.date}`,
+        key: `proj-${pt.recurring_id}-${pt.account_id}-${pt.date}`,
         description: pt.description,
         date: pt.date,
         type: pt.type,

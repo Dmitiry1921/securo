@@ -678,7 +678,7 @@ export default function AccountDetailPage() {
       payee_id: null,
       payee_name: null,
       notes: null,
-      transfer_pair_id: null,
+      transfer_pair_id: p.transfer_pair_id ?? null,
       amount_primary: p.amount_primary,
       fx_rate_used: null,
       fx_fallback: false,

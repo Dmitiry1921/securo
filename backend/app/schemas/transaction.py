@@ -236,6 +236,7 @@ class BulkAddToGroupRequest(BaseModel):
 
 
 class TransferCreate(BaseModel):
+    status: Literal["pending", "posted"] = "posted"
     from_pocket_id: Optional[uuid.UUID] = None
     to_pocket_id: Optional[uuid.UUID] = None
     # `extra="forbid"` so the removed `fx_rate` field fails loudly instead of
@@ -246,7 +247,7 @@ class TransferCreate(BaseModel):
 
     from_account_id: uuid.UUID
     to_account_id: uuid.UUID
-    amount: Decimal
+    amount: Decimal = Field(gt=0)
     # Amount that actually landed on the destination account, for
     # cross-currency transfers. Left blank, the destination is converted at the
     # market rate for `date`.
