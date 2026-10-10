@@ -71,7 +71,7 @@ export function AccountPockets({ accountId, closed }: { accountId: string; close
     )
   if (!data) return null
   return (
-    <section className="rounded-xl border bg-card p-4 sm:p-6 space-y-4">
+    <section className="rounded-xl border bg-card p-4 sm:p-6 space-y-4 mb-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{t('pockets.title')}</h2>
