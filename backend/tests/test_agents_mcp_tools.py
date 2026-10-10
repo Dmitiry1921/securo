@@ -1017,6 +1017,7 @@ async def test_propose_create_recurring_transaction_external_apply_writes(
         day_of_month=10,
         account_id=str(test_account.id),
         weekend_adjustment="next_monday",
+        auto_generate=False,
         apply=True,
     )
     assert result.get("applied") is True
@@ -1030,6 +1031,7 @@ async def test_propose_create_recurring_transaction_external_apply_writes(
     assert row.frequency == "monthly"
     assert row.day_of_month == 10
     assert row.weekend_adjustment == "next_monday"
+    assert row.auto_generate is False
 
 
 async def test_propose_update_recurring_transaction_external_apply_writes(
@@ -1065,6 +1067,7 @@ async def test_propose_update_recurring_transaction_external_apply_writes(
         recurring_id=str(rt.id),
         amount=27.90,
         weekend_adjustment="previous_friday",
+        auto_generate=False,
         apply=True,
     )
     assert result.get("applied") is True
@@ -1072,6 +1075,7 @@ async def test_propose_update_recurring_transaction_external_apply_writes(
     await session.refresh(rt)
     assert float(rt.amount) == 27.90
     assert rt.weekend_adjustment == "previous_friday"
+    assert rt.auto_generate is False
 
 
 async def test_propose_cancel_recurring_transaction_deactivate_apply(

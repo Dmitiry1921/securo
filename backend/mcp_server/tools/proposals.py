@@ -811,7 +811,8 @@ async def propose_create_transaction(
         "Build a preview for adding a recurring transaction / subscription "
         "(e.g. 'Netflix R$55 every month on the 10th'). Frequency is one "
         "of weekly/biweekly/monthly/quarterly/semiannual/yearly. For monthly, "
-        "quarterly, or semiannual use day_of_month (1-31)."
+        "quarterly, or semiannual use day_of_month (1-31). Set auto_generate=false "
+        "for bills that must not become posted transactions automatically."
     ),
     parameters={
         "type": "object",
@@ -831,6 +832,7 @@ async def propose_create_transaction(
             "account_id": {"type": "string", "format": "uuid"},
             "category_id": {"type": "string", "format": "uuid"},
             "currency": {"type": "string"},
+            "auto_generate": {"type": "boolean", "default": True},
             "apply": _APPLY_FIELD,
         },
         "required": ["description", "amount", "type", "frequency", "account_id"],
@@ -854,6 +856,7 @@ async def propose_create_recurring_transaction(
     end_date: str | None = None,
     category_id: str | None = None,
     currency: str | None = None,
+    auto_generate: bool = True,
     apply: bool = False,
 ) -> dict[str, Any]:
     if frequency in ("monthly", "quarterly", "semiannual") and not day_of_month:
@@ -899,6 +902,7 @@ async def propose_create_recurring_transaction(
             "account_name": acc.name,
             "category_id": str(cat.id) if cat else None,
             "category_name": cat.name if cat else None,
+            "auto_generate": auto_generate,
         },
         "apply_endpoint": "POST /api/recurring-transactions",
     }
@@ -920,6 +924,7 @@ async def propose_create_recurring_transaction(
                 end_date=target_end,
                 account_id=acc.id,
                 category_id=cat.id if cat else None,
+                auto_generate=auto_generate,
             ),
         )
         return {**preview, "applied": True, "id": str(created.id)}
@@ -952,6 +957,7 @@ async def propose_create_recurring_transaction(
             "end_date": {"type": "string", "format": "date"},
             "category_id": {"type": "string", "format": "uuid"},
             "is_active": {"type": "boolean"},
+            "auto_generate": {"type": "boolean"},
             "apply": _APPLY_FIELD,
         },
         "required": ["recurring_id"],
@@ -973,6 +979,7 @@ async def propose_update_recurring_transaction(
     end_date: str | None = None,
     category_id: str | None = None,
     is_active: bool | None = None,
+    auto_generate: bool | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
     ws_id = await resolve_workspace_id(session, ctx)
@@ -1017,6 +1024,8 @@ async def propose_update_recurring_transaction(
         changes["category_id"] = str(cat.id)
     if is_active is not None:
         changes["is_active"] = bool(is_active)
+    if auto_generate is not None:
+        changes["auto_generate"] = auto_generate
 
     if not changes:
         return {"error": "no changes provided"}
@@ -1032,6 +1041,7 @@ async def propose_update_recurring_transaction(
             "weekend_adjustment": rt.weekend_adjustment,
             "day_of_month": rt.day_of_month,
             "is_active": bool(getattr(rt, "is_active", True)),
+            "auto_generate": rt.auto_generate,
         },
         "changes": changes,
         "apply_endpoint": f"PATCH /api/recurring-transactions/{rt.id}",
@@ -1057,6 +1067,8 @@ async def propose_update_recurring_transaction(
             update_data["category_id"] = parse_uuid(changes["category_id"])
         if "is_active" in changes:
             update_data["is_active"] = changes["is_active"]
+        if "auto_generate" in changes:
+            update_data["auto_generate"] = changes["auto_generate"]
         updated = await recurring_transaction_service.update_recurring_transaction(
             session, rt.id, ws_id, RecurringTransactionUpdate(**update_data)
         )

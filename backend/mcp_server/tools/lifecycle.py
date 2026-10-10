@@ -47,6 +47,7 @@ async def list_recurring_transactions(
             "start_date": r.start_date.isoformat() if getattr(r, "start_date", None) else None,
             "end_date": r.end_date.isoformat() if r.end_date else None,
             "is_active": bool(getattr(r, "is_active", True)),
+            "auto_generate": r.auto_generate,
             "category_id": str(r.category_id) if getattr(r, "category_id", None) else None,
             "account_id": str(r.account_id) if getattr(r, "account_id", None) else None,
         }
