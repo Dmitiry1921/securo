@@ -242,8 +242,10 @@ async def _enrich_goal(
         current = Decimal(0)
         valuation_available = False
     if goal.status == "completed" and last_completion and last_completion.cycle_number == goal.cycle_number:
-        current = last_completion.saved_amount
-        valuation_available = True
+        from app.services.fx_rate_service import _resolve_rate
+        rate = await _resolve_rate(session, last_completion.currency, goal.currency, allow_fetch=False)
+        valuation_available = rate is not None
+        current = last_completion.saved_amount * rate if rate is not None else Decimal(0)
     percentage = _compute_percentage(current, goal.target_amount)
     monthly = _compute_monthly_contribution(current, goal.target_amount, goal.target_date)
     goal_start = goal.cycle_started_on or (goal.created_at.date() if goal.created_at else None)

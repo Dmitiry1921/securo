@@ -340,3 +340,29 @@ async def test_editing_name_does_not_lose_month_end_anchor(client, auth_headers)
         json={"name": "Renamed", "target_date": "2027-02-28"},
     )
     assert response.json()["next_target_date"] == "2027-03-31"
+
+
+async def test_completed_snapshot_keeps_currency_when_goal_is_edited(client, auth_headers, session):
+    from app.core.app_clock import app_today
+    from app.models.fx_rate import FxRate
+
+    _, _, goal = await setup_goal(client, auth_headers)
+    await client.post(f"/api/goals/{goal}/complete", headers=auth_headers, json={"cycle_number": 1})
+    session.add(
+        FxRate(
+            base_currency="USD",
+            quote_currency="IDR",
+            date=app_today(),
+            rate=Decimal("10000"),
+            source="test",
+        )
+    )
+    await session.commit()
+    response = await client.patch(
+        f"/api/goals/{goal}",
+        headers=auth_headers,
+        json={"currency": "IDR", "target_amount": 5000000},
+    )
+    assert Decimal(response.json()["current_amount"]) == 6000000
+    assert response.json()["last_completion"]["currency"] == "USD"
+    assert Decimal(response.json()["last_completion"]["saved_amount"]) == 600
