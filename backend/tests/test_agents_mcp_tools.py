@@ -43,6 +43,7 @@ def test_registry_contains_v1_tools():
         "propose_categorize",
         "propose_create_category",
         "propose_create_account",
+        "create_account",
         "propose_create_budget",
         "propose_create_payee_rule",
         "propose_create_transaction",
@@ -70,6 +71,12 @@ def test_proposal_tools_marked_is_proposal():
     ):
         spec = REGISTRY[name]
         assert spec.is_proposal, f"{name} should have is_proposal=True"
+
+
+def test_create_account_is_an_executable_write_tool():
+    spec = REGISTRY["create_account"]
+    assert not spec.is_proposal
+    assert spec.tags == ["write", "accounts"]
 
 
 def test_each_tool_has_input_schema():
@@ -881,6 +888,62 @@ async def test_propose_create_account_external_apply_writes_opening_balance(
     ).scalar_one()
     assert float(opening.amount) == 1250000
     assert opening.type == "credit"
+
+
+async def test_create_account_external_writes_immediately(
+    session: AsyncSession, test_user
+):
+    from sqlalchemy import select
+    from app.models.account import Account
+    from app.models.transaction import Transaction
+
+    handler = REGISTRY["create_account"].handler
+    ctx = CallContext(user_id=test_user.id, external=True)
+    result = await handler(
+        session=session,
+        ctx=ctx,
+        name="DEEL",
+        account_type="checking",
+        balance=1250,
+        currency="USD",
+    )
+
+    assert result["created"] is True
+    account_id = uuid.UUID(result["id"])
+    account = (
+        await session.execute(select(Account).where(Account.id == account_id))
+    ).scalar_one()
+    assert (account.name, account.type, account.currency) == (
+        "DEEL", "checking", "USD"
+    )
+    opening = (
+        await session.execute(
+            select(Transaction).where(
+                Transaction.account_id == account_id,
+                Transaction.source == "opening_balance",
+            )
+        )
+    ).scalar_one()
+    assert float(opening.amount) == 1250
+
+
+async def test_create_account_rejects_internal_agent_without_writing(
+    session: AsyncSession, test_user
+):
+    from sqlalchemy import func, select
+    from app.models.account import Account
+
+    before = await session.scalar(select(func.count()).select_from(Account))
+    result = await REGISTRY["create_account"].handler(
+        session=session,
+        ctx=CallContext(user_id=test_user.id, external=False),
+        name="Not created",
+        account_type="checking",
+    )
+
+    assert "error" in result
+    after = await session.scalar(select(func.count()).select_from(Account))
+    assert after == before
 
 
 async def test_propose_create_transaction_external_apply_writes(
