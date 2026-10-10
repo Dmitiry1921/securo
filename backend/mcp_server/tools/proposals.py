@@ -94,6 +94,24 @@ def _can_apply(ctx: CallContext, apply: bool) -> bool:
     return bool(apply) and ctx.external
 
 
+_ACCOUNT_CREATE_PROPERTIES = {
+    "name": {"type": "string", "minLength": 1},
+    "account_type": {
+        "type": "string",
+        "enum": ["checking", "savings", "credit_card", "investment", "wallet"],
+    },
+    "balance": {"type": "number", "default": 0},
+    "currency": {"type": "string", "default": "USD"},
+    "balance_date": {"type": "string", "format": "date"},
+    "credit_limit": {"type": "number", "minimum": 0},
+    "statement_close_day": {"type": "integer", "minimum": 1, "maximum": 31},
+    "payment_due_day": {"type": "integer", "minimum": 1, "maximum": 31},
+    "minimum_payment": {"type": "number", "minimum": 0},
+    "card_brand": {"type": "string"},
+    "card_level": {"type": "string"},
+}
+
+
 @tool(
     name="propose_create_account",
     description=_PROPOSAL_PREFACE
@@ -106,26 +124,7 @@ def _can_apply(ctx: CallContext, apply: bool) -> bool:
     parameters={
         "type": "object",
         "properties": {
-            "name": {"type": "string", "minLength": 1},
-            "account_type": {
-                "type": "string",
-                "enum": [
-                    "checking",
-                    "savings",
-                    "credit_card",
-                    "investment",
-                    "wallet",
-                ],
-            },
-            "balance": {"type": "number", "default": 0},
-            "currency": {"type": "string", "default": "USD"},
-            "balance_date": {"type": "string", "format": "date"},
-            "credit_limit": {"type": "number", "minimum": 0},
-            "statement_close_day": {"type": "integer", "minimum": 1, "maximum": 31},
-            "payment_due_day": {"type": "integer", "minimum": 1, "maximum": 31},
-            "minimum_payment": {"type": "number", "minimum": 0},
-            "card_brand": {"type": "string"},
-            "card_level": {"type": "string"},
+            **_ACCOUNT_CREATE_PROPERTIES,
             "apply": _APPLY_FIELD,
         },
         "required": ["name", "account_type"],
@@ -213,6 +212,63 @@ async def propose_create_account(
         return {**preview, "applied": True, "id": str(created.id)}
 
     return preview
+
+
+@tool(
+    name="create_account",
+    description=(
+        "Immediately create a manual account for the authenticated user. "
+        "Use only when the user explicitly asks to create the account. "
+        "Available to external MCP clients; Securo's built-in agent must use "
+        "propose_create_account so the user can review and confirm."
+    ),
+    parameters={
+        "type": "object",
+        "properties": _ACCOUNT_CREATE_PROPERTIES,
+        "required": ["name", "account_type"],
+        "additionalProperties": False,
+    },
+    tags=["write", "accounts"],
+)
+async def create_account(
+    *,
+    session: AsyncSession,
+    ctx: CallContext,
+    name: str,
+    account_type: str,
+    balance: float = 0,
+    currency: str = "USD",
+    balance_date: str | None = None,
+    credit_limit: float | None = None,
+    statement_close_day: int | None = None,
+    payment_due_day: int | None = None,
+    minimum_payment: float | None = None,
+    card_brand: str | None = None,
+    card_level: str | None = None,
+) -> dict[str, Any]:
+    if not ctx.external:
+        return {"error": "create_account is available only to external MCP clients"}
+
+    result = await propose_create_account(
+        session=session,
+        ctx=ctx,
+        name=name,
+        account_type=account_type,
+        balance=balance,
+        currency=currency,
+        balance_date=balance_date,
+        credit_limit=credit_limit,
+        statement_close_day=statement_close_day,
+        payment_due_day=payment_due_day,
+        minimum_payment=minimum_payment,
+        card_brand=card_brand,
+        card_level=card_level,
+        apply=True,
+    )
+    if "error" in result:
+        return result
+
+    return {"created": True, "id": result["id"], **result["proposed"]}
 
 
 @tool(
