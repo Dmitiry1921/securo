@@ -317,7 +317,9 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
       const b = await budgets.create({
         category_id: String(p.category_id),
         amount: Number(p.amount),
+        currency: p.currency ? String(p.currency) : undefined,
         month: String(p.month),
+        is_recurring: Boolean(p.is_recurring),
       })
       return b.id
     }

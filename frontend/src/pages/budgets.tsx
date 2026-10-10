@@ -30,6 +30,7 @@ import { useWorkspace } from '@/contexts/workspace-context'
 import { resolveDateFnsLocale } from '@/lib/date-fns-locale'
 import { findCategoryReference } from '@/lib/category-reference-utils'
 import { formatCurrency } from '@/lib/format'
+import { CurrencySelect } from '@/components/currency-select'
 
 function currentMonth() {
   const now = new Date()
@@ -68,6 +69,7 @@ export default function BudgetsPage() {
   const monthParam = `${selectedMonth}-01`
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<Budget | null>(null)
+  const [budgetCurrency, setBudgetCurrency] = useState(userCurrency)
   const [deletingBudget, setDeletingBudget] = useState<Budget | null>(null)
 
   const { data: budgetsList } = useQuery({
@@ -93,7 +95,7 @@ export default function BudgetsPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: { category_id: string; amount: number; month: string; is_recurring?: boolean }) =>
+    mutationFn: (data: { category_id: string; amount: number; currency: string; month: string; is_recurring?: boolean }) =>
       budgetsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] })
@@ -104,8 +106,8 @@ export default function BudgetsPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, amount }: { id: string; amount: number }) =>
-      budgetsApi.update(id, { amount }),
+    mutationFn: ({ id, amount, currency }: { id: string; amount: number; currency: string }) =>
+      budgetsApi.update(id, { amount, currency }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['budgets'] })
       setDialogOpen(false)
@@ -197,7 +199,7 @@ export default function BudgetsPage() {
           title={t('budgets.title')}
           action={
             canWrite ? (
-              <Button size="sm" className="gap-1.5 h-8" onClick={() => { setEditing(null); setDialogOpen(true) }}>
+              <Button size="sm" className="gap-1.5 h-8" onClick={() => { setEditing(null); setBudgetCurrency(userCurrency); setDialogOpen(true) }}>
                 <Plus size={13} /> {t('budgets.add')}
               </Button>
             ) : undefined
@@ -225,13 +227,13 @@ export default function BudgetsPage() {
                       )}
                     </span>
                   </td>
-                  <td className="py-3 text-sm font-semibold tabular-nums text-foreground">{mask(formatCurrency(budget.amount, userCurrency, locale))}</td>
+                  <td className="py-3 text-sm font-semibold tabular-nums text-foreground">{mask(formatCurrency(budget.amount, budget.currency ?? userCurrency, locale))}</td>
                   {canWrite && (
                     <td className="py-3 pr-4 sm:pr-5">
                       <div className="flex items-center justify-end gap-1">
                         <button
                           className="p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors"
-                          onClick={() => { setEditing(budget); setDialogOpen(true) }}
+                          onClick={() => { setEditing(budget); setBudgetCurrency(budget.currency ?? userCurrency); setDialogOpen(true) }}
                           aria-label={t('common.edit')}
                           title={t('common.edit')}
                         >
@@ -272,12 +274,14 @@ export default function BudgetsPage() {
                 updateMutation.mutate({
                   id: editing.id,
                   amount: parseFloat(formData.get('amount') as string),
+                  currency: budgetCurrency,
                 })
               } else {
                 const isRecurring = formData.get('is_recurring') === 'on'
                 createMutation.mutate({
                   category_id: formData.get('category_id') as string,
                   amount: parseFloat(formData.get('amount') as string),
+                  currency: budgetCurrency,
                   month: monthParam,
                   is_recurring: isRecurring,
                 })
@@ -322,6 +326,10 @@ export default function BudgetsPage() {
                 defaultValue={editing?.amount?.toString() ?? ''}
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label>{t('budgets.currency')}</Label>
+              <CurrencySelect value={budgetCurrency} onChange={setBudgetCurrency} />
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => { setDialogOpen(false); setEditing(null) }}>

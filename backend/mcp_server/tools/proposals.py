@@ -502,6 +502,7 @@ async def propose_create_budget(
             BudgetCreate(
                 category_id=cat.id,
                 amount=Decimal(str(amount)),
+                currency=currency,
                 month=target_month,
                 is_recurring=is_recurring,
             ),

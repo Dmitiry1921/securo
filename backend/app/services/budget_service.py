@@ -24,7 +24,7 @@ from app.services.dashboard_service import (
     _get_forecast_transactions,
     _get_recurring_projections,
 )
-from app.services.fx_rate_service import convert
+from app.services.fx_rate_service import _resolve_rate, convert
 from app.core.config import get_settings
 
 
@@ -35,14 +35,14 @@ def _primary_amount_expr():
 
 async def _build_budget_map(
     session: AsyncSession, workspace_id: uuid.UUID, month_start: date
-) -> dict[str, tuple[Decimal, bool]]:
-    """Build a map of category_id -> (amount, is_recurring) for the given month.
+) -> dict[str, Budget]:
+    """Build a map of category_id -> effective budget for the given month.
 
     Resolution order:
     1. Month-specific override (is_recurring=false, month=M) takes priority
     2. Most recent recurring default (is_recurring=true, month<=M) as fallback
     """
-    budget_map: dict[str, tuple[Decimal, bool]] = {}
+    budget_map: dict[str, Budget] = {}
 
     # Query 1: Get effective recurring defaults (most recent per category where month <= M)
     # Use a subquery to get the max month per category for recurring budgets
@@ -75,7 +75,7 @@ async def _build_budget_map(
         )
     )
     for b in recurring_result.scalars().all():
-        budget_map[str(b.category_id)] = (b.amount, True)
+        budget_map[str(b.category_id)] = b
 
     # Query 2: Month-specific overrides (take priority over recurring)
     overrides_result = await session.execute(
@@ -86,7 +86,7 @@ async def _build_budget_map(
         )
     )
     for b in overrides_result.scalars().all():
-        budget_map[str(b.category_id)] = (b.amount, False)
+        budget_map[str(b.category_id)] = b
 
     return budget_map
 
@@ -164,11 +164,17 @@ async def create_budget(
     user_id: uuid.UUID,
     data: BudgetCreate,
 ) -> Budget:
+    user = await session.get(User, user_id)
+    primary_currency = user.primary_currency if user else get_settings().default_currency
+    currency = (data.currency or primary_currency).upper()
+    rate = await _resolve_rate(session, currency, primary_currency)
     budget = Budget(
         user_id=user_id,
         workspace_id=workspace_id,
         category_id=data.category_id,
         amount=data.amount,
+        currency=currency,
+        amount_primary=(data.amount * rate).quantize(Decimal("0.01")) if rate is not None else None,
         month=data.month.replace(day=1),
         is_recurring=data.is_recurring,
     )
@@ -185,6 +191,13 @@ async def update_budget(
     if not budget:
         return None
 
+    user = await session.get(User, budget.user_id)
+    primary_currency = user.primary_currency if user else get_settings().default_currency
+    currency = (data.currency or budget.currency or primary_currency).upper()
+    amount = data.amount if data.amount is not None else budget.amount
+    rate = await _resolve_rate(session, currency, primary_currency)
+    amount_primary = (amount * rate).quantize(Decimal("0.01")) if rate is not None else None
+
     if budget.is_recurring and data.effective_month:
         effective = data.effective_month.replace(day=1)
         if effective != budget.month:
@@ -193,7 +206,9 @@ async def update_budget(
                 user_id=budget.user_id,
                 workspace_id=budget.workspace_id,
                 category_id=budget.category_id,
-                amount=data.amount if data.amount is not None else budget.amount,
+                amount=amount,
+                currency=currency,
+                amount_primary=amount_primary,
                 month=effective,
                 is_recurring=True,
             )
@@ -205,6 +220,8 @@ async def update_budget(
     # Update in place (non-recurring, or same effective-from month)
     for key, value in data.model_dump(exclude_unset=True, exclude={"effective_month"}).items():
         setattr(budget, key, value)
+    budget.currency = currency
+    budget.amount_primary = amount_primary
 
     await session.commit()
     await session.refresh(budget)
@@ -456,11 +473,18 @@ async def get_budget_vs_actual(
         prev_actual = prev_spending_map.get(cat_id, Decimal("0"))
         projected_prev = projected_prev_spending_map.get(cat_id, Decimal("0"))
         budget_entry = budget_map.get(cat_id)
-        budget_amount = budget_entry[0] if budget_entry else None
-        is_recurring = budget_entry[1] if budget_entry else False
+        budget_amount = None
+        if budget_entry:
+            budget_currency = budget_entry.currency or primary_currency
+            rate = await _resolve_rate(session, budget_currency, primary_currency, allow_fetch=False)
+            if rate is not None:
+                budget_amount = (budget_entry.amount * rate).quantize(Decimal("0.01"))
+            else:
+                budget_amount = budget_entry.amount_primary
+        is_recurring = budget_entry.is_recurring if budget_entry else False
 
         # Skip categories with no spending in either month and no budget
-        if actual == 0 and projected == 0 and prev_actual == 0 and projected_prev == 0 and budget_amount is None:
+        if actual == 0 and projected == 0 and prev_actual == 0 and projected_prev == 0 and budget_entry is None:
             continue
 
         percentage = None
@@ -475,6 +499,7 @@ async def get_budget_vs_actual(
             group_id=group.id if group else None,
             group_name=group.name if group else None,
             budget_amount=budget_amount,
+            currency=primary_currency,
             actual_amount=actual,
             projected_amount=projected,
             prev_month_amount=prev_actual,

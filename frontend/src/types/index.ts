@@ -749,6 +749,7 @@ export interface Budget {
   user_id: string
   category_id: string
   amount: number
+  currency: string | null
   month: string
   is_recurring: boolean
 }
@@ -761,6 +762,7 @@ export interface BudgetVsActual {
   group_id: string | null
   group_name: string | null
   budget_amount: number | null
+  currency: string | null
   actual_amount: number
   projected_amount: number
   prev_month_amount: number

@@ -12,6 +12,7 @@ from app.models.category_group import CategoryGroup
 from app.models.recurring_transaction import RecurringTransaction
 from app.models.rule import Rule
 from app.models.transaction import Transaction
+from app.models.user import User
 from app.schemas.category import CategoryCreate, CategoryUpdate
 from app.services.category_group_service import CATEGORY_TO_GROUP, create_default_groups
 
@@ -354,12 +355,21 @@ async def _merge_budgets(
             by_slot[slot] = budget
             continue
 
-        target.amount += budget.amount
-        # The converted amount is only a sum when both sides carry one.
-        if target.amount_primary is not None and budget.amount_primary is not None:
-            target.amount_primary += budget.amount_primary
+        user = await session.get(User, target.user_id)
+        if user is None:
+            raise CategoryTransferError("Budget owner not found")
+        if (target.currency or user.primary_currency) != (budget.currency or user.primary_currency):
+            if target.amount_primary is None or budget.amount_primary is None:
+                raise CategoryTransferError("Cannot merge budgets without exchange rates")
+            target.amount = target.amount_primary + budget.amount_primary
+            target.currency = user.primary_currency
+            target.amount_primary = target.amount
         else:
-            target.amount_primary = None
+            target.amount += budget.amount
+            if target.amount_primary is not None and budget.amount_primary is not None:
+                target.amount_primary += budget.amount_primary
+            else:
+                target.amount_primary = None
         await session.delete(budget)
 
 

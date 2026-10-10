@@ -1359,6 +1359,7 @@
     "edit": "Edit Budget",
     "category": "Category",
     "amount": "Limit",
+    "currency": "Currency",
     "actions": "Actions",
     "selectCategory": "Select category",
     "empty": "No budgets for this month",
