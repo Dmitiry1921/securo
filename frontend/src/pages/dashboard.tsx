@@ -1184,7 +1184,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-sm font-medium text-foreground truncate">{goal.name}</span>
                       <span className="text-xs font-bold tabular-nums text-foreground shrink-0">
-                        {mask(formatCurrency(goal.current_amount, goal.currency, locale))} / {mask(formatCurrency(goal.target_amount, goal.currency, locale))}
+                        {goal.valuation_available === false ? t('pockets.valuationUnavailable') : mask(formatCurrency(goal.current_amount, goal.currency, locale))} / {mask(formatCurrency(goal.target_amount, goal.currency, locale))}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1195,7 +1195,7 @@ export default function DashboardPage() {
                         />
                       </div>
                       <span className="text-[11px] font-bold tabular-nums text-muted-foreground shrink-0">
-                        {goal.percentage.toFixed(0)}%
+                        {goal.valuation_available === false ? '—' : `${goal.percentage.toFixed(0)}%`}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 mt-1 text-[11px] text-muted-foreground">

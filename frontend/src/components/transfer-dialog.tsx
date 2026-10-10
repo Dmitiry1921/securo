@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { PocketSelect } from '@/components/pocket-select'
 import { getAccountLabel, sortAccountsByDisplayName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { localDateString } from '@/lib/date-utils'
@@ -28,6 +29,8 @@ export function TransferDialog({
   onClose: () => void
   accounts: Account[]
   onSave: (data: {
+    from_pocket_id?: string | null
+    to_pocket_id?: string | null
     from_account_id: string
     to_account_id: string
     amount: number
@@ -49,6 +52,8 @@ export function TransferDialog({
   const [description, setDescription] = useState('')
   const [notes, setNotes] = useState('')
   const [destinationAmount, setDestinationAmount] = useState('')
+  const [fromPocket, setFromPocket] = useState('')
+  const [toPocket, setToPocket] = useState('')
 
   const [formSource, setFormSource] = useState<{ open: boolean; defaultFromAccountId?: string; firstAccountId: string } | null>(null)
   if (!formSource || formSource.open !== open || formSource.defaultFromAccountId !== defaultFromAccountId || formSource.firstAccountId !== firstAccountId) {
@@ -61,6 +66,8 @@ export function TransferDialog({
       setDescription('')
       setNotes('')
       setDestinationAmount('')
+      setFromPocket('')
+      setToPocket('')
     }
   }
 
@@ -82,6 +89,8 @@ export function TransferDialog({
             e.preventDefault()
             onSave({
               from_account_id: fromAccountId,
+              from_pocket_id: fromPocket || null,
+              to_pocket_id: toPocket || null,
               to_account_id: toAccountId,
               amount: parseFloat(amount),
               date,
@@ -102,6 +111,8 @@ export function TransferDialog({
                 value={fromAccountId}
                 onChange={(e) => {
                   setFromAccountId(e.target.value)
+                  setFromPocket('')
+                  setToPocket('')
                   if (e.target.value === toAccountId) setToAccountId('')
                   setDestinationAmount('')
                 }}
@@ -114,6 +125,7 @@ export function TransferDialog({
                   </option>
                 ))}
               </select>
+              <PocketSelect accountId={fromAccountId} value={fromPocket} onChange={setFromPocket} />
             </div>
             <div className="pb-2">
               <ArrowRight size={18} className="text-muted-foreground" />
@@ -125,6 +137,7 @@ export function TransferDialog({
                 value={toAccountId}
                 onChange={(e) => {
                   setToAccountId(e.target.value)
+                  setToPocket('')
                   setDestinationAmount('')
                 }}
                 required
@@ -136,6 +149,7 @@ export function TransferDialog({
                   </option>
                 ))}
               </select>
+              <PocketSelect accountId={toAccountId} value={toPocket} onChange={setToPocket} />
             </div>
           </div>
 

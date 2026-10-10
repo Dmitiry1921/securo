@@ -11,6 +11,7 @@ import type {
  * UI sends is testable without a DOM.
  */
 export interface InstallmentSeriesFormInput {
+  pocketId?: string | null
   accountId: string
   categoryId: string | null
   payeeId: string | null
@@ -74,6 +75,7 @@ export function buildInstallmentSeriesInput(
   )
   return {
     base: {
+      ...(input.pocketId ? { pocket_id: input.pocketId } : {}),
       account_id: input.accountId,
       category_id: input.categoryId || null,
       payee_id: input.payeeId || null,

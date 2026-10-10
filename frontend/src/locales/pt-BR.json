@@ -1,4 +1,23 @@
 {
+  "pockets": {
+    "title": "Envelopes",
+    "unallocated": "Não alocado",
+    "create": "Novo envelope",
+    "edit": "Editar envelope",
+    "move": "Alocar saldo",
+    "from": "De",
+    "to": "Para",
+    "goal": "Meta",
+    "noGoal": "Sem meta vinculada",
+    "goalHelp": "Crie uma meta com acompanhamento por envelopes e vincule os envelopes aqui. Cada envelope pode financiar uma meta.",
+    "reserved": "Reservado",
+    "archived": "Arquivado",
+    "empty": "Reserve parte do saldo desta conta para uma finalidade. A alocação não altera o saldo bancário.",
+    "moveHelp": "Mova alocações dentro desta conta. Para mover dinheiro entre contas bancárias, use Transferência.",
+    "review": "Verifique esta conta: as alocações excedem o saldo ou uma transação vinculada precisa de revisão.",
+    "loadError": "Não foi possível carregar os envelopes. Tente novamente.",
+    "valuationUnavailable": "Avaliação indisponível — verifique as taxas de câmbio e os saldos."
+  },
   "workspace": {
     "settingsTitle": "Configurações do workspace",
     "settingsDescription": "Gerencie os detalhes do workspace e quem tem acesso.",

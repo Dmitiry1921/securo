@@ -23,8 +23,8 @@ class GoalCreate(BaseModel):
     @field_validator("tracking_type")
     @classmethod
     def validate_tracking_type(cls, v: str) -> str:
-        if v not in ("manual", "account", "asset", "asset_group", "net_worth"):
-            raise ValueError("tracking_type must be manual, account, asset, asset_group, or net_worth")
+        if v not in ("manual", "account", "asset", "asset_group", "net_worth", "pockets"):
+            raise ValueError("tracking_type must be manual, account, asset, asset_group, net_worth, or pockets")
         return v
 
 
@@ -54,12 +54,13 @@ class GoalUpdate(BaseModel):
     @field_validator("tracking_type")
     @classmethod
     def validate_tracking_type(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and v not in ("manual", "account", "asset", "asset_group", "net_worth"):
-            raise ValueError("tracking_type must be manual, account, asset, asset_group, or net_worth")
+        if v is not None and v not in ("manual", "account", "asset", "asset_group", "net_worth", "pockets"):
+            raise ValueError("tracking_type must be manual, account, asset, asset_group, net_worth, or pockets")
         return v
 
 
 class GoalRead(BaseModel):
+    valuation_available: bool = True
     id: uuid.UUID
     user_id: uuid.UUID
     name: str
@@ -95,6 +96,7 @@ class GoalRead(BaseModel):
 
 
 class GoalSummary(BaseModel):
+    valuation_available: bool = True
     id: uuid.UUID
     name: str
     target_amount: Decimal

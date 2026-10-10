@@ -206,6 +206,7 @@ async def list_transactions(
             "category_id": str(t.category_id) if t.category_id else None,
             "category_name": t.category.name if t.category else None,
             "account_id": str(t.account_id) if t.account_id else None,
+            "pocket_id": str(t.pocket_id) if t.pocket_id else None,
             "account_name": t.account.name if getattr(t, "account", None) else None,
             "payee_id": str(t.payee_id) if getattr(t, "payee_id", None) else None,
             "payee_name": t.payee_entity.name if t.payee_entity else None,

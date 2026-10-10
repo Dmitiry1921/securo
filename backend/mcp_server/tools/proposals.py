@@ -56,6 +56,7 @@ from mcp_server.tools._helpers import (
     parse_uuid,
     parse_uuid_list,
     resolve_workspace_id,
+    resolve_tool_workspace,
 )
 
 
@@ -540,6 +541,7 @@ async def propose_create_budget(
                 "description": "debit = expense, credit = income",
             },
             "account_id": {"type": "string", "format": "uuid"},
+            "pocket_id": {"type": "string", "format": "uuid", "description": "Optional pocket on this account; native account currency only"},
             "category_id": {"type": "string", "format": "uuid"},
             "date": {"type": "string", "format": "date", "description": "Defaults to today"},
             "currency": {"type": "string", "description": "Defaults to the account's currency"},
@@ -594,6 +596,7 @@ async def propose_create_transaction(
     amount: float,
     type: str,
     account_id: str,
+    pocket_id: str | None = None,
     category_id: str | None = None,
     date: str | None = None,
     currency: str | None = None,
@@ -602,6 +605,7 @@ async def propose_create_transaction(
     splits: dict[str, Any] | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
+    await resolve_tool_workspace(session, ctx, write=True)
     ws_id = await resolve_workspace_id(session, ctx)
     acc_id = parse_uuid(account_id)
     acc = (
@@ -714,7 +718,14 @@ async def propose_create_transaction(
                 )
 
     target_date = parse_date(date) or _today()
+    if pocket_id:
+        from app.services.pocket_service import validate_transaction
+        await validate_transaction(session, Transaction(
+            pocket_id=parse_uuid(pocket_id), workspace_id=ws_id, account_id=acc.id,
+            date=target_date, currency=(currency or acc.currency).upper(),
+        ))
     proposed: dict[str, Any] = {
+        "pocket_id": pocket_id,
         "description": description.strip(),
         "amount": float(amount),
         "currency": (currency or acc.currency or "USD").upper(),
@@ -767,6 +778,7 @@ async def propose_create_transaction(
                 ws_id,
                 ctx.user_id,
                 TransactionCreate(
+                    pocket_id=parse_uuid(pocket_id),
                     description=proposed["description"],
                     amount=Decimal(str(amount)),
                     date=target_date,
@@ -1139,6 +1151,7 @@ async def propose_cancel_recurring_transaction(
         "type": "object",
         "properties": {
             "name": {"type": "string", "minLength": 1, "maxLength": 255},
+            "tracking_type": {"type": "string", "enum": ["manual", "pockets"], "default": "manual"},
             "target_amount": {"type": "number", "exclusiveMinimum": 0},
             "currency": {"type": "string", "description": "Defaults to user's primary currency"},
             "deadline": {"type": "string", "format": "date"},
@@ -1162,6 +1175,7 @@ async def propose_create_goal(
     session: AsyncSession,
     ctx: CallContext,
     name: str,
+    tracking_type: str = "manual",
     target_amount: float,
     currency: str | None = None,
     deadline: str | None = None,
@@ -1170,12 +1184,16 @@ async def propose_create_goal(
     color: str | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
+    workspace = await resolve_tool_workspace(session, ctx, write=True)
+    if tracking_type not in ("manual", "pockets"):
+        raise ValueError("Unsupported goal tracking type")
     resolved_currency = (currency or "BRL").upper()
     resolved_deadline = parse_date(deadline) if deadline else None
     resolved_initial = float(initial_amount) if initial_amount is not None else 0.0
     preview = {
         "kind": "create_goal",
         "proposed": {
+            "tracking_type": tracking_type,
             "name": name.strip(),
             "target_amount": float(target_amount),
             "currency": resolved_currency,
@@ -1188,12 +1206,13 @@ async def propose_create_goal(
     }
 
     if _can_apply(ctx, apply):
-        ws_id = await resolve_workspace_id(session, ctx)
+        ws_id = workspace.id
         created = await goal_service.create_goal(
             session,
             ws_id,
             ctx.user_id,
             GoalCreate(
+                tracking_type=tracking_type,
                 name=name.strip(),
                 target_amount=Decimal(str(target_amount)),
                 current_amount=Decimal(str(resolved_initial)),

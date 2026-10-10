@@ -9,6 +9,7 @@ import {
   budgets,
   categories,
   goals,
+  pockets,
   recurring,
   rules,
   transactions,
@@ -60,6 +61,7 @@ export function ProposalCard({ toolCallId, data }: Props) {
         'budgets',
         'rules',
         'goals',
+        'pockets',
         'dashboard',
       ].forEach((key) => qc.invalidateQueries({ queryKey: [key] }))
     },
@@ -155,6 +157,9 @@ export function ProposalCard({ toolCallId, data }: Props) {
 }
 
 function kindTitle(kind: ProposalKind, t: ReturnType<typeof useTranslation>['t']): string {
+  if (kind === 'pocket') return t('pockets.title')
+  if (kind === 'assign_pocket') return t('pockets.title')
+  if (kind === 'create_transfer') return t('transactions.transferTitle')
   if (kind === 'create_rule') return t('rules.newRule')
   if (kind === 'update_rule') return t('rules.editRule')
   if (kind === 'delete_rule') return t('rules.confirmDeleteTitle')
@@ -165,6 +170,12 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
   const p = (d.proposed || {}) as Record<string, unknown>
   const tgt = (d.target || {}) as Record<string, unknown>
   switch (kind) {
+    case 'pocket':
+      return `${t('pockets.title')}: ${String(p.name || p.amount || tgt.id || '')}`
+    case 'assign_pocket':
+      return t('pockets.title')
+    case 'create_transfer':
+      return String(p.description || t('transactions.transferTitle'))
     case 'categorize':
       return t('agents.proposal.summary.categorize', {
         count: d.affected_count ?? d.affected?.length ?? 0,
@@ -356,6 +367,7 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
           }
         : undefined
       const t = await transactions.create({
+        pocket_id: (p.pocket_id as string) || undefined,
         description: String(p.description),
         amount: Number(p.amount),
         currency: (p.currency as string) || undefined,
@@ -402,12 +414,30 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         name: String(p.name),
         target_amount: Number(p.target_amount),
         currency: (p.currency as string) || undefined,
-        deadline: (p.deadline as string) || undefined,
-        initial_amount: (p.initial_amount as number) ?? undefined,
+        target_date: (p.deadline as string) || undefined,
+        current_amount: (p.initial_amount as number) ?? undefined,
+        tracking_type: p.tracking_type as 'manual' | 'pockets' || 'manual',
         icon: (p.icon as string) || undefined,
         color: (p.color as string) || undefined,
       } as Parameters<typeof goals.create>[0])
       return g.id
+    }
+    case 'pocket': {
+      const operation = data.target?.operation
+      if (operation === 'create') await pockets.create(p as Parameters<typeof pockets.create>[0])
+      else if (operation === 'update') await pockets.update(String(data.target?.id), p)
+      else if (operation === 'move') await pockets.move(p as unknown as Parameters<typeof pockets.move>[0])
+      else throw new Error('Unknown pocket operation')
+      return String(p.account_id || data.target?.id || '')
+    }
+    case 'assign_pocket': {
+      const id = String(data.target?.id)
+      await transactions.update(id, { pocket_id: p.pocket_id as string | null })
+      return id
+    }
+    case 'create_transfer': {
+      const result = await transactions.createTransfer(p as Parameters<typeof transactions.createTransfer>[0])
+      return result.debit.id
     }
   }
 }

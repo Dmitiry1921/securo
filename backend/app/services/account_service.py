@@ -307,6 +307,10 @@ async def update_account(
         return None
 
     update_data = data.model_dump(exclude_unset=True)
+    if "type" in update_data and update_data["type"] not in ("checking", "savings", "wallet"):
+        from app.models.pocket import Pocket
+        if await session.scalar(select(Pocket.id).where(Pocket.account_id == account_id).limit(1)):
+            raise ValueError("Accounts with pocket history must remain checking, savings or wallet accounts")
     balance_date = update_data.pop("balance_date", None)
 
     # Track whether we need to recompute effective_date for all transactions.

@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { PocketAccount, PocketMoveInput } from '@/types'
 import type { NumberFormat, DateFormat } from '@/lib/format'
 import type {
   User,
@@ -580,6 +581,8 @@ export const transactions = {
     return data
   },
   createTransfer: async (transfer: {
+    from_pocket_id?: string | null
+    to_pocket_id?: string | null
     from_account_id: string
     to_account_id: string
     amount: number
@@ -1245,6 +1248,13 @@ export const budgets = {
 }
 
 // Goals
+export const pockets = {
+  list: async (accountId: string): Promise<PocketAccount> => (await api.get('/pockets', { params: { account_id: accountId } })).data,
+  create: async (data: { account_id: string; name: string; goal_id?: string | null }): Promise<PocketAccount> => (await api.post('/pockets', data)).data,
+  update: async (id: string, data: { name?: string; goal_id?: string | null; archived?: boolean }): Promise<PocketAccount> => (await api.patch(`/pockets/${id}`, data)).data,
+  move: async (data: PocketMoveInput): Promise<PocketAccount> => (await api.post('/pockets/movements', data)).data,
+}
+
 export const goals = {
   list: async (status?: string): Promise<Goal[]> => {
     const { data } = await api.get('/goals', { params: { status } })

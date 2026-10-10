@@ -1,4 +1,23 @@
 {
+  "pockets": {
+    "title": "Pockets",
+    "unallocated": "Unallocated",
+    "create": "New pocket",
+    "edit": "Edit pocket",
+    "move": "Allocate funds",
+    "from": "From",
+    "to": "To",
+    "goal": "Goal",
+    "noGoal": "No linked goal",
+    "goalHelp": "Create a goal with pocket tracking, then link its pockets here. Each pocket can fund one goal.",
+    "reserved": "Reserved",
+    "archived": "Archived",
+    "empty": "Set aside part of this account for a purpose. Allocating funds does not change your bank balance.",
+    "moveHelp": "Move allocations inside this account. To move money between bank accounts, use Transfer.",
+    "review": "Check this account: allocated funds exceed its balance or a linked transaction needs review.",
+    "loadError": "Could not load pockets. Please try again.",
+    "valuationUnavailable": "Valuation unavailable — check exchange rates and pocket balances."
+  },
   "workspace": {
     "settingsTitle": "Workspace-Einstellungen",
     "settingsDescription": "Verwalte Workspace-Details und den Zugriff.",

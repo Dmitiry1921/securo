@@ -310,14 +310,14 @@ export default function GoalsPage() {
                           />
                         </div>
                         <span className="text-xs font-bold tabular-nums text-foreground shrink-0">
-                          {goal.percentage.toFixed(0)}%
+                          {goal.valuation_available === false ? '—' : `${goal.percentage.toFixed(0)}%`}
                         </span>
                       </div>
 
                       {/* Details row */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
                         <span className="tabular-nums font-medium">
-                          {mask(formatCurrency(goal.current_amount, goal.currency, locale))}
+                          {goal.valuation_available === false ? t('pockets.valuationUnavailable') : mask(formatCurrency(goal.current_amount, goal.currency, locale))}
                           {' / '}
                           {mask(formatCurrency(goal.target_amount, goal.currency, locale))}
                         </span>
@@ -515,6 +515,7 @@ export default function GoalsPage() {
                 className={SELECT_CLASS}
               >
                 <option value="manual">{t('goals.trackingManual')}</option>
+                <option value="pockets">{t('pockets.title')}</option>
                 <option value="account">{t('goals.trackingAccount')}</option>
                 <option value="asset">{t('goals.trackingAsset')}</option>
                 <option value="asset_group">{t('goals.trackingWallet')}</option>

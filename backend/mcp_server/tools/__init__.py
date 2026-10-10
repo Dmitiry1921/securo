@@ -4,6 +4,7 @@ shared registry on startup.
 from mcp_server.tools import (  # noqa: F401
     transactions,
     accounts,
+    pockets,
     categories,
     payees,
     budgets,

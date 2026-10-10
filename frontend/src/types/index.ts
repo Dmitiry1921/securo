@@ -241,6 +241,7 @@ export interface TransactionInvoiceLink {
 }
 
 export interface Transaction {
+  pocket_id?: string | null
   /** Every invoice this transaction settles — a payout net of fees
    *  settles several. Absent in a workspace without the module. */
   invoice_links?: TransactionInvoiceLink[] | null
@@ -309,6 +310,7 @@ export type TransactionApplyScope = 'this' | 'future' | 'all'
 // installment_total_amount = base.amount * installments.
 export interface InstallmentSeriesInput {
   base: {
+    pocket_id?: string | null
     account_id: string
     category_id?: string | null
     payee_id?: string | null
@@ -912,7 +914,40 @@ export interface AssetValue {
   source: string
 }
 
+export interface Pocket {
+  id: string
+  account_id: string
+  goal_id: string | null
+  name: string
+  currency: string
+  start_date: string
+  archived: boolean
+  balance: string
+  reserved: string
+  available: string
+  needs_review: boolean
+}
+
+export interface PocketAccount {
+  account_id: string
+  currency: string
+  balance: string
+  unallocated: string
+  unallocated_available: string
+  needs_review: boolean
+  items: Pocket[]
+}
+
+export interface PocketMoveInput {
+  account_id: string
+  from_pocket_id: string | null
+  to_pocket_id: string | null
+  amount: string
+  idempotency_key: string
+}
+
 export interface Goal {
+  valuation_available?: boolean
   id: string
   user_id: string
   name: string
@@ -922,7 +957,7 @@ export interface Goal {
   target_amount_primary: number | null
   current_amount_primary: number | null
   target_date: string | null
-  tracking_type: 'manual' | 'account' | 'asset' | 'asset_group' | 'net_worth'
+  tracking_type: 'manual' | 'account' | 'asset' | 'asset_group' | 'net_worth' | 'pockets'
   account_id: string | null
   asset_id: string | null
   asset_group_id: string | null
@@ -942,6 +977,7 @@ export interface Goal {
 }
 
 export interface GoalSummary {
+  valuation_available?: boolean
   id: string
   name: string
   target_amount: number

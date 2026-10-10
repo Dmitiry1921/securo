@@ -124,9 +124,11 @@ async def list_goals(
             "target_amount": num(d.get("target_amount")),
             "current_amount": num(d.get("current_amount")),
             "currency": d.get("currency"),
-            "deadline": d.get("deadline"),
+            "deadline": d.get("target_date"),
+            "tracking_type": d.get("tracking_type"),
+            "valuation_available": d.get("valuation_available", True),
             "status": d.get("status"),
-            "progress_pct": num(d.get("progress_pct")),
+            "progress_pct": num(d.get("percentage")) if d.get("valuation_available", True) else None,
             "category_id": str(d.get("category_id")) if d.get("category_id") else None,
         })
     return {"items": items, "total": len(items)}

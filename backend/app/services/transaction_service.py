@@ -715,6 +715,7 @@ async def create_transaction(
     currency = data.currency or account.currency
 
     transaction = Transaction(
+        pocket_id=data.pocket_id,
         user_id=user_id,
         workspace_id=workspace_id,
         account_id=data.account_id,
@@ -741,6 +742,8 @@ async def create_transaction(
     if data.effective_bill_date is not None:
         await _resync_bill_link_from_override(session, transaction, account)
     apply_effective_date(transaction, account)
+    from app.services.pocket_service import validate_transaction
+    await validate_transaction(session, transaction)
     session.add(transaction)
     await session.flush()  # get ID without committing
 
@@ -824,6 +827,7 @@ async def create_installment_series(
             )
 
         tx = Transaction(
+            pocket_id=base.pocket_id,
             user_id=user_id,
             workspace_id=workspace_id,
             account_id=base.account_id,
@@ -847,6 +851,8 @@ async def create_installment_series(
         if base.effective_bill_date is not None:
             await _resync_bill_link_from_override(session, tx, account)
         apply_effective_date(tx, account)
+        from app.services.pocket_service import validate_transaction
+        await validate_transaction(session, tx)
         session.add(tx)
         await session.flush()  # get ID without committing
         created.append(tx)
@@ -934,9 +940,20 @@ async def create_transfer(
 
     debit_amount = _to_cents(data.amount)
     amount_is_explicit = data.destination_amount is not None
+    from app.services.pocket_service import validate_transaction
+    # Validate both endpoints before FX helpers can flush or commit rows.
+    endpoints = ((from_account, data.from_pocket_id), (to_account, data.to_pocket_id))
+    for acc, pocket_id in sorted(endpoints, key=lambda pair: str(pair[0].id)):
+        await validate_transaction(session, Transaction(
+            workspace_id=workspace_id, account_id=acc.id, pocket_id=pocket_id,
+            currency=acc.currency, date=data.date, amount=debit_amount,
+        ))
+    if is_cross_currency and (data.from_pocket_id or data.to_pocket_id) and data.destination_amount is None:
+        raise ValueError("Enter the actual destination amount for a cross-currency pocket transfer")
 
     # Debit transaction (from account)
     debit_tx = Transaction(
+        pocket_id=data.from_pocket_id,
         user_id=user_id,
         workspace_id=workspace_id,
         account_id=data.from_account_id,
@@ -965,6 +982,7 @@ async def create_transfer(
         credit_amount = debit_amount
 
     credit_tx = Transaction(
+        pocket_id=data.to_pocket_id,
         user_id=user_id,
         workspace_id=workspace_id,
         account_id=data.to_account_id,
@@ -1607,6 +1625,15 @@ async def update_transaction(
             assert scoped_update is not None
             row_update = scoped_update
             row_splits = None
+        from app.services.pocket_service import validate_transaction
+        await validate_transaction(session, Transaction(
+            workspace_id=workspace_id,
+            account_id=row_update.get("account_id", row.account_id),
+            pocket_id=row_update.get("pocket_id", row.pocket_id),
+            currency=row_update.get("currency", row.currency),
+            date=row_update.get("date", row.date),
+            amount=row_update.get("amount", row.amount),
+        ))
         await _apply_update_to_row(
             session,
             user_id,

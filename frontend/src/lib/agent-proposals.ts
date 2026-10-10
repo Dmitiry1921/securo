@@ -1,4 +1,7 @@
 export type ProposalKind =
+  | 'pocket'
+  | 'assign_pocket'
+  | 'create_transfer'
   | 'categorize'
   | 'create_category'
   | 'create_budget'
@@ -35,7 +38,7 @@ export function isProposalData(data: unknown): data is ProposalData {
     'create_rule', 'update_rule', 'delete_rule',
     'create_transaction', 'create_recurring_transaction',
     'update_recurring_transaction', 'cancel_recurring_transaction',
-    'create_goal',
+    'create_goal', 'pocket', 'assign_pocket', 'create_transfer',
   ].includes(k)
 }
 

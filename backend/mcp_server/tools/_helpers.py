@@ -64,3 +64,19 @@ async def resolve_workspace_id(session, ctx) -> uuid.UUID:
     if ws is None:
         raise ValueError("No workspace available for this user")
     return ws.id
+
+
+async def resolve_tool_workspace(session, ctx, *, write: bool = False):
+    """Revalidate live membership for tools exposing account allocations."""
+    from app.core.workspace_context import resolve_workspace
+    from app.models.user import User
+
+    user = await session.get(User, ctx.user_id)
+    if user is None or not user.is_active:
+        raise ValueError("User not found")
+    workspace = await resolve_workspace(
+        str(ctx.workspace_id) if ctx.workspace_id else None, user, session
+    )
+    if write:
+        workspace.require_write()
+    return workspace

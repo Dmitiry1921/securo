@@ -25,6 +25,7 @@ class TransactionBase(BaseModel):
 
 
 class TransactionCreate(TransactionBase):
+    pocket_id: Optional[uuid.UUID] = None
     account_id: uuid.UUID
     category_id: Optional[uuid.UUID] = None
     payee_id: Optional[uuid.UUID] = None
@@ -88,6 +89,7 @@ class TransactionCreate(TransactionBase):
 
 
 class TransactionUpdate(BaseModel):
+    pocket_id: Optional[uuid.UUID] = None
     description: Optional[str] = None
     amount: Optional[Decimal] = None
     date: Optional[_Date] = None
@@ -157,6 +159,7 @@ class TransactionInvoiceLink(BaseModel):
 
 
 class TransactionRead(TransactionBase):
+    pocket_id: Optional[uuid.UUID] = None
     id: uuid.UUID
     user_id: uuid.UUID
     account_id: Optional[uuid.UUID] = None
@@ -233,6 +236,8 @@ class BulkAddToGroupRequest(BaseModel):
 
 
 class TransferCreate(BaseModel):
+    from_pocket_id: Optional[uuid.UUID] = None
+    to_pocket_id: Optional[uuid.UUID] = None
     # `extra="forbid"` so the removed `fx_rate` field fails loudly instead of
     # being dropped silently: a client still sending a rate would otherwise get
     # a transfer converted at the market rate without any hint that its input

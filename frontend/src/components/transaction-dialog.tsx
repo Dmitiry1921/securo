@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { PocketSelect } from '@/components/pocket-select'
 import { getAccountLabel, getAccountName, sortAccountsByDisplayName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
@@ -456,6 +457,7 @@ function TransactionForm({
       ?? userCurrency
   )
   const [categoryId, setCategoryId] = useState(seed?.category_id ?? '')
+  const [pocketId, setPocketId] = useState(seed?.pocket_id ?? '')
   const [payeeId, setPayeeId] = useState(seed?.payee_id ?? '')
   const [accountId, setAccountId] = useState(seed?.account_id ?? defaultAccountId ?? sortedAccounts[0]?.id ?? '')
   const [notes, setNotes] = useState(seed?.notes ?? '')
@@ -806,6 +808,7 @@ function TransactionForm({
           ? {
               ...(description !== transaction?.description ? { description } : {}),
               category_id: categoryId || null,
+              pocket_id: pocketId || null,
               payee_id: payeeId || null,
               notes: notes.trim() || null,
               is_ignored: isIgnored,
@@ -819,6 +822,7 @@ function TransactionForm({
               date,
               type,
               currency,
+              pocket_id: pocketId || null,
               category_id: categoryId || null,
               payee_id: payeeId || null,
               account_id: accountId || undefined,
@@ -837,6 +841,7 @@ function TransactionForm({
           : undefined
         const installmentData = isCreating && isInstallment && !isSynced
           ? buildInstallmentSeriesInput({
+              pocketId,
               accountId,
               categoryId,
               payeeId,
@@ -1150,6 +1155,7 @@ function TransactionForm({
             className="bg-card"
           />
         </div>
+        <PocketSelect accountId={accountId} value={pocketId} onChange={setPocketId} />
       </div>
       <div className={cn("grid gap-4", isSynced ? "grid-cols-1" : "grid-cols-2")}>
         <div className="space-y-2">
@@ -1170,7 +1176,7 @@ function TransactionForm({
             <select
               className="w-full border border-border rounded-md px-3 py-2 text-sm bg-card focus:outline-none focus-visible:ring-ring/30 focus-visible:ring-[2px]"
               value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
+              onChange={(e) => { setAccountId(e.target.value); setPocketId('') }}
               required
             >
               {sortedAccounts.map((acc) => (

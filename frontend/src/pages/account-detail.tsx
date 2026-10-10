@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { AccountPockets } from '@/components/account-pockets'
 import { getAccountName } from '@/lib/account-utils'
 import { useParams, Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -1398,6 +1399,7 @@ export default function AccountDetailPage() {
       })()}
 
       {/* Balance / Cycle spending chart */}
+      {['checking', 'savings', 'wallet'].includes(account.type) && <AccountPockets accountId={account.id} closed={account.is_closed} />}
       {(() => {
         const cycleEmpty = isCreditCard && chartData.length > 0 && chartData[chartData.length - 1].balance === 0
         const balances = chartData.map(d => d.balance)

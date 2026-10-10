@@ -83,7 +83,7 @@ async def build_context_primer(
             name = row.get("name") or "?"
             kind = row.get("type") or "account"
             currency = row.get("currency") or primary_currency
-            balance = row.get("balance")
+            balance = row.get("current_balance", row.get("balance"))
             balance_str = _fmt_amount(balance, currency) if balance is not None else ""
             account_id = row.get("id")
             piece = f"- {name} ({kind}"

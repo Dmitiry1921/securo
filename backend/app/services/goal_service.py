@@ -12,6 +12,7 @@ from app.models.account import Account
 from app.models.asset import Asset
 from app.models.asset_group import AssetGroup
 from app.models.goal import Goal
+from app.models.pocket import Pocket
 from app.models.user import User
 from app.schemas.goal import GoalCreate, GoalRead, GoalSummary, GoalUpdate
 from app.services.asset_service import _compute_current_value, _get_latest_value, get_asset_values_at
@@ -67,6 +68,27 @@ async def _resolve_current_amount(
     goal_currency = goal.currency
     # Asset/account/net_worth lookups need the goal's workspace scope.
     workspace_id = goal.workspace_id
+
+    if goal.tracking_type == "pockets":
+        if goal.id is None:
+            return Decimal(0)
+        from app.services.pocket_service import get_account_pockets
+        from app.services.fx_rate_service import _resolve_rate
+        account_ids = (await session.scalars(select(Pocket.account_id).where(
+            Pocket.goal_id == goal.id, Pocket.workspace_id == workspace_id,
+        ).distinct())).all()
+        total = Decimal(0)
+        for account_id in account_ids:
+            state = await get_account_pockets(session, workspace_id, account_id)
+            rate = await _resolve_rate(session, state.currency, goal.currency, allow_fetch=False)
+            if rate is None or state.needs_review:
+                raise ValueError("Pocket valuation unavailable")
+            for pocket in state.items:
+                if pocket.goal_id == goal.id:
+                    if pocket.needs_review:
+                        raise ValueError("Pocket valuation unavailable")
+                    total += pocket.available * rate
+        return total.quantize(Decimal("0.01"))
 
     if goal.tracking_type == "account" and goal.account_id:
         account = await session.get(Account, goal.account_id)
@@ -205,7 +227,14 @@ async def _enrich_goal(
     session: AsyncSession, goal: Goal, user_id: uuid.UUID
 ) -> GoalRead:
     """Enrich a goal with computed fields."""
-    current = await _resolve_current_amount(session, goal, user_id)
+    valuation_available = True
+    try:
+        current = await _resolve_current_amount(session, goal, user_id)
+    except ValueError:
+        if goal.tracking_type != "pockets":
+            raise
+        current = Decimal(0)
+        valuation_available = False
     percentage = _compute_percentage(current, goal.target_amount)
     monthly = _compute_monthly_contribution(current, goal.target_amount, goal.target_date)
     goal_start = goal.created_at.date() if goal.created_at else None
@@ -222,10 +251,18 @@ async def _enrich_goal(
     target_primary = None
     current_primary = None
     if goal.currency != primary_currency:
-        target_primary = await _convert_amount(session, goal.target_amount, goal.currency, primary_currency)
-        current_primary = await _convert_amount(session, current, goal.currency, primary_currency)
+        if goal.tracking_type == "pockets":
+            from app.services.fx_rate_service import _resolve_rate
+            rate = await _resolve_rate(session, goal.currency, primary_currency, allow_fetch=False)
+            if rate is not None and valuation_available:
+                target_primary = goal.target_amount * rate
+                current_primary = current * rate
+        else:
+            target_primary = await _convert_amount(session, goal.target_amount, goal.currency, primary_currency)
+            current_primary = await _convert_amount(session, current, goal.currency, primary_currency)
 
     return GoalRead(
+        valuation_available=valuation_available,
         id=goal.id,
         user_id=goal.user_id,
         name=goal.name,
@@ -248,7 +285,7 @@ async def _enrich_goal(
         updated_at=goal.updated_at,
         percentage=percentage,
         monthly_contribution=monthly,
-        on_track=on_track,
+        on_track=on_track if valuation_available else None,
         account_name=account_name,
         asset_name=asset_name,
         asset_group_name=asset_group_name,
@@ -332,6 +369,10 @@ async def update_goal(
         return None
     await _ensure_goal_link_scope(session, workspace_id, data)
     for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "tracking_type" and value != "pockets" and goal.tracking_type == "pockets":
+            linked = await session.scalar(select(Pocket.id).where(Pocket.goal_id == goal.id).limit(1))
+            if linked:
+                raise ValueError("Unlink the goal's pockets before changing its tracking type")
         setattr(goal, field, value)
     _clear_inactive_tracking_links(goal)
     await session.commit()
@@ -369,7 +410,8 @@ async def get_goal_summary(
     goals = list(result.scalars().all())
     summaries = []
     for goal in goals:
-        current = await _resolve_current_amount(session, goal, user_id)
+        enriched = await _enrich_goal(session, goal, user_id)
+        current = enriched.current_amount
         percentage = _compute_percentage(current, goal.target_amount)
         monthly = _compute_monthly_contribution(current, goal.target_amount, goal.target_date)
         goal_start = goal.created_at.date() if goal.created_at else None
@@ -377,6 +419,7 @@ async def get_goal_summary(
             current, goal.target_amount, goal.target_date, goal_start, goal.initial_amount
         )
         summaries.append(GoalSummary(
+            valuation_available=enriched.valuation_available,
             id=goal.id,
             name=goal.name,
             target_amount=goal.target_amount,
@@ -388,6 +431,6 @@ async def get_goal_summary(
             color=goal.color,
             percentage=percentage,
             monthly_contribution=monthly,
-            on_track=on_track,
+            on_track=on_track if enriched.valuation_available else None,
         ))
     return summaries
