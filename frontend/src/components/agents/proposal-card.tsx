@@ -13,6 +13,7 @@ import {
   recurring,
   rules,
   transactions,
+  transferSchedules,
 } from '@/lib/api'
 
 import type { ProposalKind, ProposalData } from '@/lib/agent-proposals'
@@ -160,6 +161,7 @@ function kindTitle(kind: ProposalKind, t: ReturnType<typeof useTranslation>['t']
   if (kind === 'pocket') return t('pockets.title')
   if (kind === 'assign_pocket') return t('pockets.title')
   if (kind === 'create_transfer') return t('transactions.transferTitle')
+  if (kind === 'delete_transfer') return t('common.delete')
   if (kind === 'create_rule') return t('rules.newRule')
   if (kind === 'update_rule') return t('rules.editRule')
   if (kind === 'delete_rule') return t('rules.confirmDeleteTitle')
@@ -171,11 +173,15 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
   const tgt = (d.target || {}) as Record<string, unknown>
   switch (kind) {
     case 'pocket':
+      if (tgt.operation === 'income_rule') return `${t('pockets.incomeRules.title')}: ${String(p.percentage)}%`
+      if (tgt.operation === 'stop_income_rule') return t('pockets.incomeRules.stop')
       return `${t('pockets.title')}: ${String(p.name || p.amount || tgt.id || '')}`
     case 'assign_pocket':
       return t('pockets.title')
     case 'create_transfer':
       return String(p.description || t('transactions.transferTitle'))
+    case 'delete_transfer':
+      return `${t('common.delete')}: ${t('transactions.transferTitle')} (${d.affected_count ?? 0})`
     case 'categorize':
       return t('agents.proposal.summary.categorize', {
         count: d.affected_count ?? d.affected?.length ?? 0,
@@ -434,6 +440,7 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         target_date: (p.deadline as string) || undefined,
         current_amount: (p.initial_amount as number) ?? undefined,
         tracking_type: p.tracking_type as 'manual' | 'pockets' || 'manual',
+        pocket_balance_basis: p.pocket_balance_basis as 'available' | 'balance' || 'available',
         repeat_frequency: p.repeat_frequency as Parameters<typeof goals.create>[0]['repeat_frequency'],
         icon: (p.icon as string) || undefined,
         color: (p.color as string) || undefined,
@@ -445,6 +452,8 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
       if (operation === 'create') await pockets.create(p as Parameters<typeof pockets.create>[0])
       else if (operation === 'update') await pockets.update(String(data.target?.id), p)
       else if (operation === 'move') await pockets.move(p as unknown as Parameters<typeof pockets.move>[0])
+      else if (operation === 'income_rule') await pockets.createIncomeRule(p as unknown as Parameters<typeof pockets.createIncomeRule>[0])
+      else if (operation === 'stop_income_rule') await pockets.stopIncomeRule(String(data.target?.id), String(p.end_date))
       else throw new Error('Unknown pocket operation')
       return String(p.account_id || data.target?.id || '')
     }
@@ -456,6 +465,11 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
     case 'create_transfer': {
       const result = await transactions.createTransfer(p as Parameters<typeof transactions.createTransfer>[0])
       return result.debit.id
+    }
+    case 'delete_transfer': {
+      const id = String(data.target?.id)
+      await transferSchedules.deletePending(id)
+      return id
     }
   }
 }

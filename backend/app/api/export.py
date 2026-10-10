@@ -22,7 +22,7 @@ from app.models.transfer_schedule import TransferSchedule
 from app.models.rule import Rule
 from app.models.transaction import Transaction
 from app.models.goal import Goal, GoalCompletion
-from app.models.pocket import Pocket, PocketMovement
+from app.models.pocket import Pocket, PocketMovement, PocketIncomeRule
 from app.schemas.export import BackupRequest
 from app.services.backup_service import build_backup_archive
 
@@ -72,6 +72,7 @@ async def _collect(ctx: WorkspaceContext, session: AsyncSession) -> dict[str, ob
         "goals": (await session.scalars(select(Goal).where(Goal.workspace_id == ws_id))).all(),
         "pockets": (await session.scalars(select(Pocket).where(Pocket.workspace_id == ws_id))).all(),
         "pocket_movements": (await session.scalars(select(PocketMovement).where(PocketMovement.workspace_id == ws_id))).all(),
+        "pocket_income_rules": (await session.scalars(select(PocketIncomeRule).where(PocketIncomeRule.workspace_id == ws_id))).all(),
         "accounts": accounts,
         "transactions": transactions,
         "categories": categories,

@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { PocketIncomeRules } from '@/components/pocket-income-rules'
 
 export function AccountPockets({ accountId, closed }: { accountId: string; closed: boolean }) {
   const { t } = useTranslation()
@@ -144,6 +145,7 @@ export function AccountPockets({ accountId, closed }: { accountId: string; close
           </div>
         ))}
       </div>
+      <PocketIncomeRules data={data} canWrite={canWrite && !closed} />
       <Dialog
         open={!!form}
         onOpenChange={(open) => {

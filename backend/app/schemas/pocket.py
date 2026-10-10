@@ -56,3 +56,29 @@ class PocketAccountRead(BaseModel):
     unallocated_available: Decimal
     needs_review: bool
     items: list[PocketRead]
+    income_rules: list["PocketIncomeRuleRead"] = Field(default_factory=list)
+
+
+class PocketIncomeRuleCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: uuid.UUID
+    account_id: uuid.UUID
+    pocket_id: uuid.UUID
+    percentage: Decimal = Field(gt=0, le=100, max_digits=5, decimal_places=2)
+    start_date: date
+    end_date: date | None = None
+
+    @model_validator(mode="after")
+    def dates(self):
+        if self.end_date and self.end_date < self.start_date:
+            raise ValueError("End date must not precede start date")
+        return self
+
+
+class PocketIncomeRuleRead(PocketIncomeRuleCreate):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PocketIncomeRuleStop(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    end_date: date

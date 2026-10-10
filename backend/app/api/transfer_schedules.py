@@ -57,3 +57,11 @@ async def confirm(pair_id: uuid.UUID, data: TransferConfirm, ctx: WorkspaceConte
 @router.get("/pending")
 async def pending(ctx: WorkspaceContext = Depends(current_workspace), session: AsyncSession = Depends(get_async_session)):
     return await service.pending_pairs(session, ctx.workspace.id)
+
+
+@router.delete("/pairs/{pair_id}")
+async def delete_pending_pair(pair_id: uuid.UUID, ctx: WorkspaceContext = Depends(current_writable_workspace), session: AsyncSession = Depends(get_async_session)):
+    try:
+        return {"transaction_ids": await service.delete_pending_pair(session, ctx.workspace.id, pair_id, apply=True)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))

@@ -69,3 +69,19 @@ class PocketMovement(Base):
         ForeignKey("users.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PocketIncomeRule(Base):
+    """A bounded percentage of real income; dates/percentage are immutable except closing the interval."""
+    __tablename__ = "pocket_income_rules"
+    __table_args__ = (
+        CheckConstraint("percentage > 0 AND percentage <= 100", name="ck_pocket_income_percentage"),
+        CheckConstraint("end_date IS NULL OR end_date >= start_date", name="ck_pocket_income_dates"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id", ondelete="CASCADE"))
+    account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("accounts.id", ondelete="CASCADE"), index=True)
+    pocket_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("pockets.id", ondelete="CASCADE"))
+    percentage: Mapped[Decimal] = mapped_column(Numeric(5, 2))
+    start_date: Mapped[date] = mapped_column(Date)
+    end_date: Mapped[date | None] = mapped_column(Date)

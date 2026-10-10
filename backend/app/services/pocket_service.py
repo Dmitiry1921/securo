@@ -7,7 +7,7 @@ provider edits are visible as needs_review instead of invented conversions.
 
 import uuid
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,9 +16,10 @@ from app.core.app_clock import app_today
 from app.models.account import Account
 from app.models.goal import Goal
 from app.models.category import Category
-from app.models.pocket import Pocket, PocketMovement
+from app.models.pocket import Pocket, PocketMovement, PocketIncomeRule
 from app.models.transaction import Transaction
-from app.schemas.pocket import PocketAccountRead, PocketCreate, PocketMove, PocketRead, PocketUpdate
+from app.schemas.pocket import (PocketAccountRead, PocketCreate, PocketMove, PocketRead, PocketUpdate,
+    PocketIncomeRuleCreate, PocketIncomeRuleRead)
 from app.services.account_service import get_account_summary
 
 
@@ -75,6 +76,9 @@ async def get_account_pockets(
         if movement.to_pocket_id is not None and movement.to_pocket_id in balances:
             balances[movement.to_pocket_id] += movement.amount
     by_id = {p.id: p for p in pockets}
+    income_rules = list((await session.scalars(select(PocketIncomeRule).where(
+        PocketIncomeRule.workspace_id == workspace_id, PocketIncomeRule.account_id == account_id,
+    ).order_by(PocketIncomeRule.start_date, PocketIncomeRule.id))).all())
     ignored_categories = set(
         (
             await session.scalars(
@@ -116,7 +120,6 @@ async def get_account_pockets(
     summary = await get_account_summary(session, account_id, workspace_id)
     assert summary is not None
     balance = Decimal(str(summary["current_balance"]))
-    unallocated = balance - sum(balances.values(), Decimal(0))
     # Reserve unassigned outgoing payments too; earmarking them again would
     # make future/pending spending appear available for a second purpose.
     unassigned_reserved = Decimal(0)
@@ -141,6 +144,34 @@ async def get_account_pockets(
             and (tx.status == "pending" or tx.date > app_today())
         ):
             unassigned_reserved += abs(tx.amount)
+    # Derived allocations reuse the income row itself as the source of truth.
+    # Editing, ignoring or deleting that row adjusts its allocation exactly once;
+    # reads never write movements or bank transactions. Closed rules retain history.
+    if income_rules:
+        from app.services._query_filters import counts_as_pnl, is_confirmed, is_not_future
+        incomes = (await session.scalars(select(Transaction).where(
+            Transaction.account_id == account_id, Transaction.workspace_id == workspace_id,
+            Transaction.type == "credit", Transaction.amount > 0,
+            Transaction.source.not_in(["opening_balance", "settlement"]),
+            counts_as_pnl(), is_confirmed(), is_not_future(app_today()),
+        ))).all()
+        for tx in incomes:
+            if tx.currency != acc.currency:
+                continue
+            percentage = Decimal(0)
+            allocated = Decimal(0)
+            for rule in income_rules:
+                if tx.date < rule.start_date or (rule.end_date and tx.date > rule.end_date):
+                    continue
+                percentage += rule.percentage
+                total = (tx.amount * percentage / 100).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+                part = total - allocated
+                allocated = total
+                if tx.pocket_id is not None and tx.pocket_id in balances:
+                    balances[tx.pocket_id] -= part
+                balances[rule.pocket_id] += part
+    invalid.update(p.id for p in pockets if p.archived_at and balances[p.id])
+    unallocated = balance - sum(balances.values(), Decimal(0))
     return PocketAccountRead(
         account_id=account_id,
         currency=acc.currency,
@@ -148,6 +179,7 @@ async def get_account_pockets(
         unallocated=unallocated,
         unallocated_available=unallocated - unassigned_reserved,
         needs_review=bool(invalid) or unallocated < 0 or native_balance_unknown,
+        income_rules=[PocketIncomeRuleRead.model_validate(r) for r in income_rules],
         items=[
             PocketRead(
                 id=p.id,
@@ -211,7 +243,11 @@ async def update_pocket(session, workspace_id, pocket_id, data: PocketUpdate):
             )
             .limit(1)
         )
-        if data.archived and (item.balance or item.reserved or item.needs_review or pending):
+        income_rule = await session.scalar(select(PocketIncomeRule.id).where(
+            PocketIncomeRule.pocket_id == row.id,
+            (PocketIncomeRule.end_date.is_(None)) | (PocketIncomeRule.end_date >= app_today()),
+        ).limit(1))
+        if data.archived and (item.balance or item.reserved or item.needs_review or pending or income_rule):
             raise ValueError("Only empty pockets without pending transactions can be archived")
         row.archived_at = datetime.now(timezone.utc) if data.archived else None
     await session.commit()
@@ -283,3 +319,50 @@ async def validate_transaction(session, transaction):
         raise ValueError(
             "Transaction predates the pocket; leave historical transactions unallocated"
         )
+
+
+async def create_income_rule(session, workspace_id, data: PocketIncomeRuleCreate):
+    acc = await account(session, workspace_id, data.account_id, lock=True)
+    previous = await session.get(PocketIncomeRule, data.id)
+    if previous:
+        if previous.workspace_id != workspace_id or any(getattr(previous, k) != getattr(data, k)
+            for k in ("account_id", "pocket_id", "percentage", "start_date")):
+            raise ValueError("Rule id already used for another allocation")
+        return PocketIncomeRuleRead.model_validate(previous)
+    target = await session.get(Pocket, data.pocket_id)
+    if acc.is_closed or acc.type not in ("checking", "savings", "wallet") or not target or target.workspace_id != workspace_id or target.account_id != acc.id or target.archived_at:
+        raise ValueError("Choose an active pocket of this account")
+    if data.start_date < max(app_today(), target.start_date):
+        raise ValueError("Income rules cannot reallocate historical income")
+    rules = list((await session.scalars(select(PocketIncomeRule).where(
+        PocketIncomeRule.account_id == acc.id, PocketIncomeRule.workspace_id == workspace_id,
+    ))).all())
+    # Checking each interval start covers the maximum overlap, including rules
+    # starting after this one. The account lock serializes concurrent creation.
+    candidates = [data, *rules]
+    for on in {r.start_date for r in candidates}:
+        overlapping = [r for r in candidates if r.start_date <= on and (r.end_date is None or on <= r.end_date)]
+        if sum((r.percentage for r in overlapping), Decimal(0)) > 100:
+            raise ValueError("Income allocations must total at most 100%")
+        if sum(r.pocket_id == data.pocket_id for r in overlapping) > 1:
+            raise ValueError("This pocket already has an overlapping income rule")
+    rule = PocketIncomeRule(workspace_id=workspace_id, **data.model_dump())
+    session.add(rule)
+    await session.commit()
+    return PocketIncomeRuleRead.model_validate(rule)
+
+
+async def stop_income_rule(session, workspace_id, rule_id, end_date):
+    rule = await session.scalar(select(PocketIncomeRule).where(
+        PocketIncomeRule.id == rule_id, PocketIncomeRule.workspace_id == workspace_id,
+    ).with_for_update())
+    if not rule:
+        raise ValueError("Income rule not found")
+    await account(session, workspace_id, rule.account_id, lock=True)
+    if rule.end_date == end_date:
+        return PocketIncomeRuleRead.model_validate(rule)
+    if end_date < max(app_today(), rule.start_date) or (rule.end_date and end_date > rule.end_date):
+        raise ValueError("Close the rule without rewriting past allocations or extending its interval")
+    rule.end_date = end_date
+    await session.commit()
+    return PocketIncomeRuleRead.model_validate(rule)

@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Literal
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -39,6 +39,7 @@ class Goal(Base):
     cycle_number: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     cycle_started_on: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     tracking_type: Mapped[str] = mapped_column(String(20), default="manual")  # manual, account, asset, asset_group, net_worth
+    pocket_balance_basis: Mapped[Literal["available", "balance"]] = mapped_column(String(10), default="available", server_default="available")
     account_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
     asset_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=True)
     asset_group_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("asset_groups.id", ondelete="SET NULL"), nullable=True)

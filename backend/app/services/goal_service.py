@@ -1,7 +1,7 @@
 import uuid
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, cast
 
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from app.schemas.goal import (
     GoalCreate, GoalRead, GoalSummary, GoalUpdate,
     GoalComplete, GoalRestart, GoalCompletionRead,
 )
+from app.schemas.recurring_transaction import RecurringFrequency
 from app.services.asset_service import _compute_current_value, _get_latest_value, get_asset_values_at
 from app.services.dashboard_service import _account_balance_at, _get_open_accounts
 from app.services.account_service import get_account_name
@@ -90,7 +91,9 @@ async def _resolve_current_amount(
                 if pocket.goal_id == goal.id:
                     if pocket.needs_review:
                         raise ValueError("Pocket valuation unavailable")
-                    total += pocket.available * rate
+                    total += (pocket.balance if goal.pocket_balance_basis == "balance" else pocket.available) * rate
+        if goal.pocket_balance_basis == "balance":
+            return total.quantize(Decimal("0.01"))
         # Reserving an internal transfer between two pockets of this goal
         # moves the savings, it does not spend them. The pending destination
         # is not yet in its pocket balance, so retain the source reservation.
@@ -301,7 +304,7 @@ async def _enrich_goal(
             current_primary = await _convert_amount(session, current, goal.currency, primary_currency)
 
     return GoalRead(
-        repeat_frequency=goal.repeat_frequency,
+        repeat_frequency=cast(RecurringFrequency | None, goal.repeat_frequency),
         cycle_number=goal.cycle_number,
         next_target_date=_next_target_date(goal),
         last_completion=GoalCompletionRead.model_validate(last_completion) if last_completion else None,
@@ -324,6 +327,7 @@ async def _enrich_goal(
         color=goal.color,
         position=goal.position,
         metadata_json=goal.metadata_json,
+        pocket_balance_basis=goal.pocket_balance_basis,
         created_at=goal.created_at,
         updated_at=goal.updated_at,
         percentage=percentage,
@@ -384,6 +388,7 @@ async def create_goal(
         repeat_anchor_day=data.target_date.day if data.target_date else None,
         cycle_started_on=app_today(),
         tracking_type=data.tracking_type,
+        pocket_balance_basis=data.pocket_balance_basis,
         account_id=data.account_id,
         asset_id=data.asset_id,
         asset_group_id=data.asset_group_id,
@@ -547,7 +552,12 @@ async def complete_goal(session, workspace_id, user_id, goal_id, data: GoalCompl
                 raise ValueError("Select an existing posted expense from a linked pocket")
             if await session.scalar(select(GoalCompletion.id).where(GoalCompletion.transaction_id == tx.id)):
                 raise ValueError("This payment already completed another cycle")
-        pocket_id = data.payment.pocket_id if data.payment else tx.pocket_id
+        if data.payment:
+            pocket_id = data.payment.pocket_id
+        elif tx:
+            pocket_id = tx.pocket_id
+        else:
+            raise ValueError("Payment not found")
         pocket = await session.scalar(select(Pocket).where(
             Pocket.id == pocket_id, Pocket.workspace_id == workspace_id, Pocket.goal_id == goal.id,
         ))

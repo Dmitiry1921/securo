@@ -16,7 +16,16 @@
     "moveHelp": "Move allocations inside this account. To move money between bank accounts, use Transfer.",
     "review": "Check this account: allocated funds exceed its balance or a linked transaction needs review.",
     "loadError": "Could not load pockets. Please try again.",
-    "valuationUnavailable": "Valuation unavailable — check exchange rates and pocket balances."
+    "valuationUnavailable": "Valuation unavailable — check exchange rates and pocket balances.",
+    "incomeRules": {
+      "title": "Income allocation",
+      "add": "Allocate a percentage",
+      "percentage": "Percentage of income",
+      "help": "Automatically earmark part of posted income on this account. Pending and future income, opening balances and internal transfers are excluded. Account balance stays unchanged.",
+      "historyHelp": "Starts on this date. Correcting or deleting income corrects its allocation too. Existing past income is not reallocated. To change a percentage, close this rule and create a new one for the following day.",
+      "stop": "Stop rule",
+      "stopHelp": "Keep allocations through {{day}}; later income is no longer allocated by this rule. Past allocations remain."
+    }
   },
   "workspace": {
     "settingsTitle": "Ustawienia obszaru roboczego",
@@ -1486,7 +1495,11 @@
     "trackingWallet": "Portfel",
     "wallet": "Portfel",
     "selectWallet": "Wybierz portfel",
-    "walletHint": "Śledź ten cel według łącznej wartości wszystkich aktywów w wybranym portfelu."
+    "walletHint": "Śledź ten cel według łącznej wartości wszystkich aktywów w wybranym portfelu.",
+    "pocketBalanceBasis": "Pocket progress",
+    "pocketAvailable": "Available after Pending reservations",
+    "pocketBalance": "Allocated balance before Pending reservations",
+    "pocketBalanceHelp": "For a refill target, use allocated balance. Pending payments still reserve money and require confirmation; they do not count as spent."
   },
   "recurring": {
     "title": "Transakcje cykliczne",
@@ -2992,5 +3005,26 @@
       "recurring": "Reguły Cyklicznych",
       "recurringHint": "Jak ustalamy, że obciążenie to rachunek, którego już oczekiwałeś."
     }
+  },
+  "transfers": {
+    "amountMode": "Amount calculation",
+    "fixedAmount": "Fixed amount per transfer",
+    "proratedWeekly": "Monthly envelope split by days",
+    "monthlyEnvelope": "Monthly envelope",
+    "cycleDay": "Monthly funding day",
+    "weekday": "Weekly transfer day",
+    "proratedSummary": "Every {{weekday}}, plus day {{day}} · amount depends on days until the next transfer",
+    "proratedHelp": "Divide the envelope by calendar days between funding dates. Transfer until the next weekly day or funding day, plus a short transfer on funding day. Complete cycles total exactly the monthly envelope. Confirm actual bank amounts.",
+    "weekdays": {
+      "0": "Monday",
+      "1": "Tuesday",
+      "2": "Wednesday",
+      "3": "Thursday",
+      "4": "Friday",
+      "5": "Saturday",
+      "6": "Sunday"
+    },
+    "initialCycleAmount": "First cycle remainder (optional)",
+    "initialCycleHelp": "Split this amount from the start date until the next funding day. Later cycles use the monthly envelope."
   }
 }

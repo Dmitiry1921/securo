@@ -1,7 +1,7 @@
 import uuid
 from datetime import date as _Date, datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 
 from app.schemas.recurring_transaction import RecurringFrequency
 
@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 
 class GoalCreate(BaseModel):
+    pocket_balance_basis: Literal["available", "balance"] = "available"
     name: str
     target_amount: Decimal
     current_amount: Decimal = Decimal("0")
@@ -32,6 +33,7 @@ class GoalCreate(BaseModel):
 
 
 class GoalUpdate(BaseModel):
+    pocket_balance_basis: Literal["available", "balance"] = "available"
     name: Optional[str] = None
     target_amount: Optional[Decimal] = None
     current_amount: Optional[Decimal] = None
@@ -105,6 +107,7 @@ class GoalRestart(BaseModel):
 
 
 class GoalRead(BaseModel):
+    pocket_balance_basis: Literal["available", "balance"] = "available"
     repeat_frequency: Optional[RecurringFrequency] = None
     cycle_number: int = 1
     next_target_date: Optional[_Date] = None

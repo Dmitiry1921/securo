@@ -939,6 +939,16 @@ export interface PocketAccount {
   unallocated_available: string
   needs_review: boolean
   items: Pocket[]
+  income_rules?: PocketIncomeRule[]
+}
+
+export interface PocketIncomeRule {
+  id: string
+  account_id: string
+  pocket_id: string
+  percentage: string
+  start_date: string
+  end_date: string | null
 }
 
 export interface PocketMoveInput {
@@ -969,6 +979,7 @@ export interface GoalCompleteInput {
   transaction_id?: string
 }
 export interface Goal {
+  pocket_balance_basis?: 'available' | 'balance'
   repeat_frequency: GoalRepeat | null
   cycle_number: number
   next_target_date: string | null
@@ -1840,6 +1851,10 @@ export interface TransferSchedule {
   description: string
   notes: string | null
   amount: number
+  amount_mode?: 'fixed' | 'prorated_weekly'
+  initial_cycle_amount?: number | null
+  cycle_day?: number | null
+  weekday?: number | null
   currency: string
   frequency: 'days' | 'months'
   interval: number

@@ -448,6 +448,7 @@ export default function GoalsPage() {
                 tracking_type: formData.get('tracking_type') as string,
                 target_date: targetDate || null,
                 repeat_frequency: formData.get('repeat_frequency') || null,
+                pocket_balance_basis: formData.get('pocket_balance_basis') || editing?.pocket_balance_basis || 'available',
                 icon: selectedIcon || null,
                 color: selectedColor || null,
               }
@@ -532,6 +533,16 @@ export default function GoalsPage() {
               </select>
             </div>
 
+            {trackingType === 'pockets' && (
+              <div className="space-y-2">
+                <Label htmlFor="pocket-balance-basis">{t('goals.pocketBalanceBasis')}</Label>
+                <select id="pocket-balance-basis" name="pocket_balance_basis" defaultValue={editing?.pocket_balance_basis ?? 'available'} className={SELECT_CLASS}>
+                  <option value="available">{t('goals.pocketAvailable')}</option>
+                  <option value="balance">{t('goals.pocketBalance')}</option>
+                </select>
+                <p className="text-xs text-muted-foreground">{t('goals.pocketBalanceHelp')}</p>
+              </div>
+            )}
             {trackingType === 'manual' && (
               <div className="space-y-2">
                 <Label>{t('goals.currentAmount')}</Label>

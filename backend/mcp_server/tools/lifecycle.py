@@ -133,6 +133,7 @@ async def list_goals(
             "monthly_contribution": d.get("monthly_contribution"),
             "on_track": d.get("on_track"),
             "tracking_type": d.get("tracking_type"),
+            "pocket_balance_basis": d.get("pocket_balance_basis", "available"),
             "valuation_available": d.get("valuation_available", True),
             "status": d.get("status"),
             "progress_pct": num(d.get("percentage")) if d.get("valuation_available", True) else None,

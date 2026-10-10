@@ -16,7 +16,7 @@ unchanged for Securo's own UI.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,7 @@ from app.schemas.goal import GoalCreate
 from app.schemas.recurring_transaction import (
     RecurringTransactionCreate,
     RecurringTransactionUpdate,
+    RecurringFrequency,
     WeekendAdjustment,
 )
 from app.schemas.rule import RuleAction, RuleCondition, RuleCreate
@@ -1173,6 +1174,7 @@ async def propose_cancel_recurring_transaction(
             "name": {"type": "string", "minLength": 1, "maxLength": 255},
             "repeat_frequency": {"type": "string", "enum": ["weekly", "biweekly", "monthly", "quarterly", "semiannual", "yearly"]},
             "tracking_type": {"type": "string", "enum": ["manual", "pockets"], "default": "manual"},
+            "pocket_balance_basis": {"type": "string", "enum": ["available", "balance"], "default": "available"},
             "target_amount": {"type": "number", "exclusiveMinimum": 0},
             "currency": {"type": "string", "description": "Defaults to user's primary currency"},
             "deadline": {"type": "string", "format": "date"},
@@ -1197,7 +1199,8 @@ async def propose_create_goal(
     ctx: CallContext,
     name: str,
     tracking_type: str = "manual",
-    repeat_frequency: str | None = None,
+    pocket_balance_basis: Literal["available", "balance"] = "available",
+    repeat_frequency: RecurringFrequency | None = None,
     target_amount: float,
     currency: str | None = None,
     deadline: str | None = None,
@@ -1216,6 +1219,7 @@ async def propose_create_goal(
         "kind": "create_goal",
         "proposed": {
             "tracking_type": tracking_type,
+            "pocket_balance_basis": pocket_balance_basis,
             "repeat_frequency": repeat_frequency,
             "name": name.strip(),
             "target_amount": float(target_amount),
@@ -1236,6 +1240,7 @@ async def propose_create_goal(
             ctx.user_id,
             GoalCreate(
                 tracking_type=tracking_type,
+                pocket_balance_basis=pocket_balance_basis,
                 repeat_frequency=repeat_frequency,
                 name=name.strip(),
                 target_amount=Decimal(str(target_amount)),

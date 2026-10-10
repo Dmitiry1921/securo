@@ -1,6 +1,6 @@
 """Pockets use the HTTP domain service and the same workspace access checks."""
 
-from app.schemas.pocket import PocketCreate, PocketMove, PocketUpdate
+from app.schemas.pocket import PocketCreate, PocketMove, PocketUpdate, PocketIncomeRuleCreate, PocketIncomeRuleStop
 from app.schemas.transaction import TransferCreate, TransactionUpdate
 from app.models.transaction import Transaction
 from app.services import transaction_service
@@ -33,15 +33,16 @@ async def list_pockets(*, session, ctx, account_id: str):
 @tool(
     name="propose_pocket",
     description=_PROPOSAL_PREFACE
-    + "Create or update an account pocket, or move existing funds between pockets of the SAME account. Null movement endpoints mean unallocated funds. These movements do not move bank money. For bank transfers use transactions. A goal must have tracking_type=pockets. Reuse the same idempotency_key when retrying a movement.",
+    + "Create/update pockets or move money inside ONE account. income_rule allocates a percentage of posted real income to a pocket from a start date; excludes Pending/future/opening balances/internal transfers. Supply a stable UUID id for retry safety. stop_income_rule closes a rule's interval using rule_id and data.end_date, preserving past allocations. Rules are immutable; to change a percentage, close the old rule then create a new one starting the following day. These actions do not move bank money. A goal must have tracking_type=pockets. Reuse the same idempotency_key when retrying a movement.",
     parameters={
         "type": "object",
         "properties": {
-            "operation": {"type": "string", "enum": ["create", "update", "move"]},
+            "operation": {"type": "string", "enum": ["create", "update", "move", "income_rule", "stop_income_rule"]},
             "pocket_id": {"type": "string", "format": "uuid"},
+            "rule_id": {"type": "string", "format": "uuid"},
             "data": {
                 "type": "object",
-                "description": "create: account_id, name, optional goal_id. update: name, goal_id, archived. move: account_id, from_pocket_id, to_pocket_id, amount, idempotency_key (UUID).",
+                "description": "create: account_id, name, optional goal_id. update: name, goal_id, archived. move: account_id, from_pocket_id, to_pocket_id, amount, idempotency_key (UUID). income_rule: id (UUID), account_id, pocket_id, percentage (0 < p <= 100), start_date, optional end_date. stop_income_rule: end_date (inclusive; not in the past).",
             },
             "apply": _APPLY_FIELD,
         },
@@ -52,22 +53,24 @@ async def list_pockets(*, session, ctx, account_id: str):
     tags=["propose", "accounts"],
 )
 async def propose_pocket(
-    *, session, ctx, operation: str, data: dict, pocket_id: str | None = None, apply: bool = False
+    *, session, ctx, operation: str, data: dict, pocket_id: str | None = None, rule_id: str | None = None, apply: bool = False
 ):
     import uuid
 
     workspace = await resolve_tool_workspace(session, ctx, write=True)
-    schemas = {"create": PocketCreate, "update": PocketUpdate, "move": PocketMove}
+    schemas = {"create": PocketCreate, "update": PocketUpdate, "move": PocketMove,
+               "income_rule": PocketIncomeRuleCreate, "stop_income_rule": PocketIncomeRuleStop}
     if operation not in schemas:
         raise ValueError("Unknown pocket operation")
     payload = schemas[operation].model_validate(data)
-    target = uuid.UUID(pocket_id) if pocket_id else None
-    if operation == "update" and target is None:
-        raise ValueError("pocket_id is required")
+    target_id = rule_id if operation == "stop_income_rule" else pocket_id
+    target = uuid.UUID(target_id) if target_id else None
+    if operation in ("update", "stop_income_rule") and target is None:
+        raise ValueError("pocket_id / rule_id is required")
     preview = {
         "kind": "pocket",
         "proposed": payload.model_dump(mode="json", exclude_unset=True),
-        "target": {"id": pocket_id, "operation": operation},
+        "target": {"id": target_id, "operation": operation},
     }
     if not _can_apply(ctx, apply):
         return preview
@@ -75,6 +78,10 @@ async def propose_pocket(
         result = await pocket_service.create_pocket(session, workspace.id, ctx.user_id, payload)
     elif isinstance(payload, PocketUpdate):
         result = await pocket_service.update_pocket(session, workspace.id, target, payload)
+    elif isinstance(payload, PocketIncomeRuleCreate):
+        result = await pocket_service.create_income_rule(session, workspace.id, payload)
+    elif isinstance(payload, PocketIncomeRuleStop):
+        result = await pocket_service.stop_income_rule(session, workspace.id, target, payload.end_date)
     else:
         result = await pocket_service.move(session, workspace.id, ctx.user_id, payload)
     return {**preview, "applied": True, "result": result.model_dump(mode="json")}

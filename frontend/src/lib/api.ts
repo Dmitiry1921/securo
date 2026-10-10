@@ -1252,6 +1252,8 @@ export const budgets = {
 
 // Goals
 export const pockets = {
+  createIncomeRule: async (data: import('@/types').PocketIncomeRule): Promise<import('@/types').PocketIncomeRule> => (await api.post('/pockets/income-rules', data)).data,
+  stopIncomeRule: async (id: string, end_date: string): Promise<import('@/types').PocketIncomeRule> => (await api.patch(`/pockets/income-rules/${id}`, { end_date })).data,
   list: async (accountId: string): Promise<PocketAccount> => (await api.get('/pockets', { params: { account_id: accountId } })).data,
   create: async (data: { account_id: string; name: string; goal_id?: string | null }): Promise<PocketAccount> => (await api.post('/pockets', data)).data,
   update: async (id: string, data: { name?: string; goal_id?: string | null; archived?: boolean }): Promise<PocketAccount> => (await api.patch(`/pockets/${id}`, data)).data,
@@ -2303,4 +2305,5 @@ export const transferSchedules = {
   update: async (id: string, data: Omit<import('@/types').TransferSchedule, 'id'>): Promise<import('@/types').TransferSchedule> => (await api.put(`/transfer-schedules/${id}`, data)).data,
   materialize: async (id: string, date: string) => (await api.post(`/transfer-schedules/${id}/materialize`, { date })).data,
   confirm: async (id: string, data: { amount: number; destination_amount: number; date: string }) => (await api.post(`/transfer-schedules/pairs/${id}/confirm`, data)).data,
+  deletePending: async (id: string) => (await api.delete(`/transfer-schedules/pairs/${id}`)).data,
 }

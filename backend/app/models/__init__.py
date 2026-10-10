@@ -21,7 +21,7 @@ from app.models.transaction_attachment import TransactionAttachment
 from app.models.payee import Payee, PayeeMapping, PayeeTaxId
 from app.models.app_settings import AppSetting
 from app.models.goal import Goal
-from app.models.pocket import Pocket, PocketMovement
+from app.models.pocket import Pocket, PocketMovement, PocketIncomeRule
 from app.models.credit_card_bill import CreditCardBill
 from app.models.group import Group, GroupMember
 from app.models.transaction_split import TransactionSplit
@@ -79,6 +79,7 @@ __all__ = [
     "Goal",
     "Pocket",
     "PocketMovement",
+    "PocketIncomeRule",
     "CreditCardBill",
     "Group",
     "GroupMember",

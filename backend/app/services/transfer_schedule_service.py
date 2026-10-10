@@ -17,6 +17,14 @@ from app.services.recurring_transaction_service import _advance_months
 
 def occurrences(plan, start: date, end: date):
     """Nominal dates in [start, end), preserving the requested month day."""
+    if getattr(plan, "amount_mode", "fixed") == "prorated_weekly":
+        current = max(start, plan.start_date)
+        while current < end and (plan.end_date is None or current <= plan.end_date):
+            anchor = _advance_months(current, 0, plan.cycle_day)
+            if current.weekday() == plan.weekday or current == anchor or current == plan.start_date:
+                yield current
+            current += timedelta(days=1)
+        return
     current = plan.start_date
     if plan.frequency == "months":
         day = plan.day_of_month or current.day
@@ -72,12 +80,36 @@ async def save_schedule(session, workspace_id, user_id, data: TransferScheduleCr
     return plan
 
 
+def occurrence_amount(plan, on):
+    """Split a monthly envelope by calendar days; cumulative rounding keeps its exact total."""
+    if getattr(plan, "amount_mode", "fixed") != "prorated_weekly":
+        return plan.amount
+    anchor = _advance_months(on, 0, plan.cycle_day)
+    if anchor > on:
+        anchor = _advance_months(anchor, -1, plan.cycle_day)
+    next_anchor = _advance_months(anchor, 1, plan.cycle_day)
+    amount = plan.amount
+    initial_amount = getattr(plan, "initial_cycle_amount", None)
+    if initial_amount is not None and anchor <= plan.start_date <= on < next_anchor:
+        # A first, partially funded cycle uses the remaining envelope from start_date.
+        anchor = plan.start_date
+        amount = initial_amount
+    days_to_weekday = (plan.weekday - on.weekday()) % 7 or 7
+    until = min(on + timedelta(days=days_to_weekday), next_anchor)
+    if plan.end_date is not None:
+        until = min(until, plan.end_date + timedelta(days=1))
+    days = (next_anchor - anchor).days
+    def cumulative(d):
+        return (amount * Decimal((d - anchor).days) / days).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return cumulative(until) - cumulative(on)
+
+
 async def _amounts(session, plan, on, source, destination):
     rates = [await _resolve_rate(session, plan.currency, acc.currency, on, allow_fetch=False)
              for acc in (source, destination)]
     if any(rate is None for rate in rates):
         raise ValueError(f"Exchange rate unavailable for {plan.description}")
-    return tuple((plan.amount * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return tuple((occurrence_amount(plan, on) * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
                  for rate in rates)
 
 
@@ -101,7 +133,7 @@ async def projections(session, workspace_id, start, end, primary_currency, accou
                 continue
             debit, credit = await _amounts(session, plan, on, source, destination)
             rate = await _resolve_rate(session, plan.currency, primary_currency, on, allow_fetch=False)
-            primary = float((plan.amount * rate).quantize(Decimal("0.01"))) if rate is not None else None
+            primary = float((occurrence_amount(plan, on) * rate).quantize(Decimal("0.01"))) if rate is not None else None
             pair_id = uuid.uuid5(plan.id, on.isoformat())
             for acc, amount, kind in ((source, debit, "debit"), (destination, credit, "credit")):
                 if account_ids is not None and acc.id not in account_ids:
@@ -210,3 +242,22 @@ async def pending_pairs(session, workspace_id):
             "amount": float(tx.amount), "currency": tx.currency,
             "date": tx.date.isoformat(), "description": tx.description}
     return [p for p in pairs.values() if "debit" in p and "credit" in p]
+
+
+async def delete_pending_pair(session, workspace_id, pair_id, *, apply=False):
+    """Remove an unexecuted one-off pair through the native transaction cleanup."""
+    pair = list((await session.scalars(select(Transaction).where(
+        Transaction.workspace_id == workspace_id, Transaction.transfer_pair_id == pair_id,
+    ).order_by(Transaction.id).with_for_update())).all())
+    if not pair:
+        return []
+    if len(pair) != 2 or {tx.type for tx in pair} != {"debit", "credit"}:
+        raise ValueError("Transfer pair is incomplete")
+    if any(tx.status != "pending" for tx in pair):
+        raise ValueError("Only a Pending transfer can be removed here")
+    if any(tx.transfer_schedule_id is not None for tx in pair):
+        raise ValueError("Edit or pause the recurring plan; deleting its occurrence would recreate it")
+    ids = [str(tx.id) for tx in pair]
+    if apply:
+        await transaction_service.delete_transaction(session, pair[0].id, workspace_id)
+    return ids
