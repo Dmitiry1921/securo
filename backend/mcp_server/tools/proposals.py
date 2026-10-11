@@ -814,7 +814,8 @@ async def propose_create_transaction(
         "(e.g. 'Netflix R$55 every month on the 10th'). Frequency is one "
         "of weekly/biweekly/monthly/quarterly/semiannual/yearly. For monthly, "
         "quarterly, or semiannual use day_of_month (1-31). Set auto_generate=false "
-        "for bills that must not become posted transactions automatically."
+        "to show projections only. Set auto_generate=true and generation_status=pending "
+        "to generate Pending occurrences that require manual confirmation, including on manual accounts."
     ),
     parameters={
         "type": "object",
@@ -835,6 +836,7 @@ async def propose_create_transaction(
             "category_id": {"type": "string", "format": "uuid"},
             "currency": {"type": "string"},
             "auto_generate": {"type": "boolean", "default": True},
+            "generation_status": {"type": "string", "enum": ["auto", "pending"], "default": "auto"},
             "apply": _APPLY_FIELD,
         },
         "required": ["description", "amount", "type", "frequency", "account_id"],
@@ -859,6 +861,7 @@ async def propose_create_recurring_transaction(
     category_id: str | None = None,
     currency: str | None = None,
     auto_generate: bool = True,
+    generation_status: str = "auto",
     apply: bool = False,
 ) -> dict[str, Any]:
     if frequency in ("monthly", "quarterly", "semiannual") and not day_of_month:
@@ -905,6 +908,7 @@ async def propose_create_recurring_transaction(
             "category_id": str(cat.id) if cat else None,
             "category_name": cat.name if cat else None,
             "auto_generate": auto_generate,
+            "generation_status": generation_status,
         },
         "apply_endpoint": "POST /api/recurring-transactions",
     }
@@ -927,6 +931,7 @@ async def propose_create_recurring_transaction(
                 account_id=acc.id,
                 category_id=cat.id if cat else None,
                 auto_generate=auto_generate,
+                generation_status=generation_status,
             ),
         )
         return {**preview, "applied": True, "id": str(created.id)}
@@ -960,6 +965,7 @@ async def propose_create_recurring_transaction(
             "category_id": {"type": "string", "format": "uuid"},
             "is_active": {"type": "boolean"},
             "auto_generate": {"type": "boolean"},
+            "generation_status": {"type": "string", "enum": ["auto", "pending"]},
             "apply": _APPLY_FIELD,
         },
         "required": ["recurring_id"],
@@ -982,6 +988,7 @@ async def propose_update_recurring_transaction(
     category_id: str | None = None,
     is_active: bool | None = None,
     auto_generate: bool | None = None,
+    generation_status: str | None = None,
     apply: bool = False,
 ) -> dict[str, Any]:
     ws_id = await resolve_workspace_id(session, ctx)
@@ -1028,6 +1035,8 @@ async def propose_update_recurring_transaction(
         changes["is_active"] = bool(is_active)
     if auto_generate is not None:
         changes["auto_generate"] = auto_generate
+    if generation_status is not None:
+        changes["generation_status"] = generation_status
 
     if not changes:
         return {"error": "no changes provided"}
@@ -1044,6 +1053,7 @@ async def propose_update_recurring_transaction(
             "day_of_month": rt.day_of_month,
             "is_active": bool(getattr(rt, "is_active", True)),
             "auto_generate": rt.auto_generate,
+            "generation_status": rt.generation_status,
         },
         "changes": changes,
         "apply_endpoint": f"PATCH /api/recurring-transactions/{rt.id}",
@@ -1071,6 +1081,8 @@ async def propose_update_recurring_transaction(
             update_data["is_active"] = changes["is_active"]
         if "auto_generate" in changes:
             update_data["auto_generate"] = changes["auto_generate"]
+        if "generation_status" in changes:
+            update_data["generation_status"] = changes["generation_status"]
         updated = await recurring_transaction_service.update_recurring_transaction(
             session, rt.id, ws_id, RecurringTransactionUpdate(**update_data)
         )

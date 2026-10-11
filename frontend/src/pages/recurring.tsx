@@ -344,6 +344,7 @@ function RecurringForm({
   const [accountId, setAccountId] = useState(recurring?.account_id ?? sortedAccounts[0]?.id ?? '')
   const [isActive, setIsActive] = useState(recurring?.is_active ?? true)
   const [autoGenerate, setAutoGenerate] = useState(recurring?.auto_generate ?? true)
+  const [generationStatus, setGenerationStatus] = useState(recurring?.generation_status ?? 'pending')
 
   const selectClass = 'w-full border border-border rounded-lg px-3 py-2 text-sm bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary'
 
@@ -365,6 +366,7 @@ function RecurringForm({
           account_id: accountId || null,
           is_active: isActive,
           auto_generate: autoGenerate,
+          generation_status: generationStatus,
         } as Partial<RecurringTransaction>)
       }}
       className="space-y-4"
@@ -475,6 +477,14 @@ function RecurringForm({
           <span className="block text-xs text-muted-foreground">{t('recurring.autoGenerateHelp')}</span>
         </span>
       </label>
+      {autoGenerate && <div className="space-y-2">
+        <Label>{t('recurring.generationStatus')}</Label>
+        <select className={selectClass} value={generationStatus} onChange={e => setGenerationStatus(e.target.value as 'auto' | 'pending')}>
+          <option value="pending">{t('recurring.generationPending')}</option>
+          <option value="auto">{t('recurring.generationAuto')}</option>
+        </select>
+        <p className="text-xs text-muted-foreground">{t('recurring.generationPendingHelp')}</p>
+      </div>}
       {recurring && (
         <label className="flex items-center gap-2 cursor-pointer">
           <input

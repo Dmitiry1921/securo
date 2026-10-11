@@ -25,6 +25,7 @@ class RecurringTransaction(Base):
             "weekend_adjustment IN ('none', 'previous_friday', 'next_monday')",
             name="ck_recurring_transactions_weekend_adjustment",
         ),
+        CheckConstraint("generation_status IN ('auto', 'pending')", name="ck_recurring_generation_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -52,6 +53,9 @@ class RecurringTransaction(Base):
     # matched to it (e.g. from bank sync). Either way, incoming real
     # transactions are linked back to the bill to avoid duplicates.
     auto_generate: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    # Pending mode requires a real charge or an explicit user confirmation,
+    # including on manual accounts. Auto retains the existing posting policy.
+    generation_status: Mapped[str] = mapped_column(String(10), default="auto", server_default="auto")
     next_occurrence: Mapped[date] = mapped_column(Date)
     amount_primary: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=15, scale=2), nullable=True)
     fx_rate_used: Mapped[Optional[Decimal]] = mapped_column(Numeric(precision=20, scale=10), nullable=True)

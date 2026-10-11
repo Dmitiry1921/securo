@@ -36,6 +36,7 @@ it.each(['America/Los_Angeles', 'Pacific/Kiritimati'])(
       end_date: null,
       is_active: true,
       auto_generate: false,
+      generation_status: 'auto',
       next_occurrence: '2026-03-08',
       amount_primary: null,
       fx_rate_used: null,

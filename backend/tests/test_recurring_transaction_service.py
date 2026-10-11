@@ -46,6 +46,57 @@ async def test_account_for_recurring(session: AsyncSession, test_user) -> Accoun
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("direction", ["debit", "credit"])
+async def test_pending_mode_requires_confirmation_each_month(
+    session, test_user, test_workspace, test_account_for_recurring, direction,
+):
+    rec = await create_recurring_transaction(
+        session, test_workspace.id, test_user.id,
+        RecurringTransactionCreate(
+            description="Manual confirmation", amount=Decimal("100"), currency="BRL",
+            type=direction, frequency="monthly", start_date=date(2025, 1, 5),
+            account_id=test_account_for_recurring.id, generation_status="pending",
+        ),
+    )
+    assert await generate_pending(session, test_user.id, up_to=date(2025, 3, 5)) == 3
+    assert await generate_pending(session, test_user.id, up_to=date(2025, 3, 5)) == 0
+    rows = list((await session.scalars(select(Transaction).where(
+        Transaction.recurring_transaction_id == rec.id,
+    ).order_by(Transaction.date))).all())
+    assert [row.date for row in rows] == [date(2025, month, 5) for month in (1, 2, 3)]
+    assert all(row.status == "pending" for row in rows)
+    # Confirming one payment must not post other cycles or create duplicates.
+    rows[0].status = "posted"
+    await session.commit()
+    assert await generate_pending(session, test_user.id, up_to=date(2025, 4, 5)) == 1
+    await session.refresh(rows[1])
+    assert rows[1].status == "pending"
+
+
+@pytest.mark.asyncio
+async def test_pending_mode_links_real_charge_without_duplicate(
+    session, test_user, test_workspace, test_account_for_recurring,
+):
+    rec = await create_recurring_transaction(
+        session, test_workspace.id, test_user.id,
+        RecurringTransactionCreate(
+            description="Internet", amount=Decimal("100"), currency="BRL", type="debit",
+            frequency="monthly", start_date=date(2025, 1, 5),
+            account_id=test_account_for_recurring.id, generation_status="pending",
+        ),
+    )
+    real = Transaction(user_id=test_user.id, workspace_id=test_workspace.id,
+        account_id=test_account_for_recurring.id, description="Internet", amount=Decimal("100"),
+        currency="BRL", type="debit", source="manual", status="posted", date=date(2025, 1, 5))
+    session.add(real)
+    await session.commit()
+    assert await generate_pending(session, test_user.id, up_to=date(2025, 1, 5)) == 0
+    await session.refresh(real)
+    assert real.recurring_transaction_id == rec.id
+    assert real.status == "posted"
+
+
+@pytest.mark.asyncio
 async def test_create_recurring_transaction(
     session: AsyncSession, test_user, test_workspace, test_account_for_recurring
 ):

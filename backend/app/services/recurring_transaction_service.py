@@ -85,6 +85,7 @@ async def create_recurring_transaction(
         start_date=data.start_date,
         end_date=data.end_date,
         auto_generate=data.auto_generate,
+        generation_status=data.generation_status,
         next_occurrence=next_occ,
     )
     session.add(recurring)
@@ -107,7 +108,7 @@ async def update_recurring_transaction(
 
     update_data = data.model_dump(exclude_unset=True)
 
-    for required in ("weekend_adjustment", "start_date", "frequency"):
+    for required in ("weekend_adjustment", "start_date", "frequency", "generation_status"):
         if required in update_data and update_data[required] is None:
             raise ValueError(f"{required} is required")
 
@@ -315,6 +316,8 @@ async def generate_pending(
                 ),
             ),
         )
+        .order_by(RecurringTransaction.id)
+        .with_for_update()
     )
     recurring_list = list(result.scalars().all())
 
@@ -351,23 +354,10 @@ async def generate_pending(
                 existing_real.recurring_transaction_id = recurring.id
             else:
                 account = await session.get(Account, recurring.account_id)
-                # Only occurrences that already came due reach this point, so
-                # the row is a charge that happened rather than a forecast.
-                # Whether to trust that depends on who else writes to the
-                # account:
-                #
-                # Bank-synced: the incoming charge often fails to match this
-                # placeholder, and two posted rows for one charge inflate the
-                # balance silently. Holding the placeholder as pending keeps
-                # it out of the actuals until something confirms it, so a
-                # missed match costs a visible stale row instead of a wrong
-                # number. Improving the match itself is the real fix (#588);
-                # this is the guard until then.
-                #
-                # Manual: nothing else ever writes to the account, so there is
-                # no charge to duplicate against and nothing that would ever
-                # post the row. Pending there buys no safety and stops the
-                # balance from moving.
+                # Explicit Pending mode waits for manual confirmation or a
+                # matching bank charge. Legacy auto mode posts manual-account
+                # occurrences; synced accounts always wait to avoid counting
+                # both the placeholder and an unmatched incoming charge (#588).
                 is_synced_account = account is not None and account.connection_id is not None
                 transaction = Transaction(
                     user_id=user_id,
@@ -379,7 +369,7 @@ async def generate_pending(
                     date=effective_occurrence,
                     type=recurring.type,
                     source="recurring",
-                    status="pending" if is_synced_account else "posted",
+                    status="pending" if recurring.generation_status == "pending" or is_synced_account else "posted",
                     recurring_transaction_id=recurring.id,
                 )
                 apply_effective_date(transaction, account)
