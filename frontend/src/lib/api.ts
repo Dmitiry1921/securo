@@ -2317,5 +2317,6 @@ export const transferSchedules = {
   update: async (id: string, data: Omit<import('@/types').TransferSchedule, 'id'>): Promise<import('@/types').TransferSchedule> => (await api.put(`/transfer-schedules/${id}`, data)).data,
   materialize: async (id: string, date: string) => (await api.post(`/transfer-schedules/${id}/materialize`, { date })).data,
   confirm: async (id: string, data: { amount: number; destination_amount: number; date: string }) => (await api.post(`/transfer-schedules/pairs/${id}/confirm`, data)).data,
+  updatePending: async (id: string, data: { amount: number | string; destination_amount: number | string; date: string; notes?: string | null }) => (await api.patch(`/transfer-schedules/pairs/${id}`, data)).data,
   deletePending: async (id: string) => (await api.delete(`/transfer-schedules/pairs/${id}`)).data,
 }

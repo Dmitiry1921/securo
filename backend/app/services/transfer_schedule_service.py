@@ -195,6 +195,14 @@ async def generate_pending(session, user_id):
 
 
 async def confirm(session, workspace_id, user_id, pair_id, data: TransferConfirm):
+    return await _update_pair(session, workspace_id, user_id, pair_id, data, "posted")
+
+
+async def update_pending(session, workspace_id, user_id, pair_id, data):
+    return await _update_pair(session, workspace_id, user_id, pair_id, data, "pending")
+
+
+async def _update_pair(session, workspace_id, user_id, pair_id, data, status):
     pair = list((await session.scalars(select(Transaction).where(
         Transaction.workspace_id == workspace_id, Transaction.transfer_pair_id == pair_id,
     ).order_by(Transaction.id).with_for_update())).all())
@@ -205,6 +213,8 @@ async def confirm(session, workspace_id, user_id, pair_id, data: TransferConfirm
     if debit.currency == credit.currency and data.amount != data.destination_amount:
         raise ValueError("Same-currency transfer amounts must match")
     if all(tx.status == "posted" for tx in pair):
+        if status == "pending":
+            raise ValueError("Cannot edit a Posted transfer through the Pending action")
         if debit.amount == data.amount and credit.amount == data.destination_amount and debit.date == data.date:
             return pair
         raise ValueError("Transfer already confirmed; edit the transaction instead")
@@ -216,7 +226,9 @@ async def confirm(session, workspace_id, user_id, pair_id, data: TransferConfirm
     for tx, amount in ((debit, data.amount), (credit, data.destination_amount)):
         tx.amount = amount
         tx.date = data.date
-        tx.status = "posted"
+        tx.status = status
+        if "notes" in data.model_fields_set:
+            tx.notes = data.notes
         tx.transfer_amount_explicit = True
         from app.services.credit_card_service import apply_effective_date
         apply_effective_date(tx, await session.get(Account, tx.account_id))

@@ -162,6 +162,7 @@ function kindTitle(kind: ProposalKind, t: ReturnType<typeof useTranslation>['t']
   if (kind === 'assign_pocket') return t('pockets.title')
   if (kind === 'create_transfer') return t('transactions.transferTitle')
   if (kind === 'delete_transfer') return t('common.delete')
+  if (kind === 'update_pending_transfer') return `${t('common.edit')}: ${t('transactions.transferTitle')}`
   if (kind === 'create_rule') return t('rules.newRule')
   if (kind === 'update_rule') return t('rules.editRule')
   if (kind === 'delete_rule') return t('rules.confirmDeleteTitle')
@@ -182,6 +183,8 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
       return String(p.description || t('transactions.transferTitle'))
     case 'delete_transfer':
       return `${t('common.delete')}: ${t('transactions.transferTitle')} (${d.affected_count ?? 0})`
+    case 'update_pending_transfer':
+      return `${String(tgt.description)}: ${fmt(p.amount, tgt.currency)} → ${fmt(p.destination_amount, tgt.destination_currency)} · ${String(p.date)}`
     case 'categorize':
       return t('agents.proposal.summary.categorize', {
         count: d.affected_count ?? d.affected?.length ?? 0,
@@ -469,6 +472,11 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
     case 'delete_transfer': {
       const id = String(data.target?.id)
       await transferSchedules.deletePending(id)
+      return id
+    }
+    case 'update_pending_transfer': {
+      const id = String(data.target?.id)
+      await transferSchedules.updatePending(id, p as Parameters<typeof transferSchedules.updatePending>[1])
       return id
     }
   }

@@ -53,3 +53,7 @@ class TransferConfirm(BaseModel):
     amount: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
     destination_amount: Decimal = Field(gt=0, max_digits=15, decimal_places=2)
     date: date
+
+
+class TransferPendingUpdate(TransferConfirm):
+    notes: str | None = Field(default=None, max_length=1000)

@@ -1,7 +1,7 @@
 """MCP and UI share transfer scheduling and manual confirmation services."""
 import uuid
 from datetime import date as Date
-from app.schemas.transfer_schedule import TransferScheduleCreate, TransferScheduleRead, TransferConfirm
+from app.schemas.transfer_schedule import TransferScheduleCreate, TransferScheduleRead, TransferConfirm, TransferPendingUpdate
 from app.services import transfer_schedule_service as service
 from mcp_server.registry import tool
 from mcp_server.tools._helpers import resolve_tool_workspace
@@ -43,6 +43,24 @@ async def propose_confirm_transfer(*, session, ctx, transfer_pair_id, data, appl
     preview = {"kind": "confirm_transfer", "transfer_pair_id": transfer_pair_id, "proposed": payload.model_dump(mode="json")}
     if _can_apply(ctx, apply):
         pair = await service.confirm(session, ws.id, ctx.user_id, uuid.UUID(transfer_pair_id), payload)
+        return {**preview, "applied": True, "transaction_ids": [str(tx.id) for tx in pair]}
+    return preview
+
+
+@tool(name="propose_update_pending_transfer", description=_PROPOSAL_PREFACE + "Edit both legs of an existing Pending transfer atomically, including a materialized scheduled occurrence. Pass the source amount, destination_amount and date; optional notes replace both legs' notes. Both legs stay Pending. Posted transfers are rejected. Recurring plan, pockets, pair ID and occurrence identity are preserved. This corrects a planned snapshot, never records payment or sends bank money.", parameters={"type": "object", "properties": {"transfer_pair_id": {"type": "string", "format": "uuid"}, "data": TransferPendingUpdate.model_json_schema(), "apply": _APPLY_FIELD}, "required": ["transfer_pair_id", "data"], "additionalProperties": False}, is_proposal=True, tags=["propose", "transactions"])
+async def propose_update_pending_transfer(*, session, ctx, transfer_pair_id, data, apply=False):
+    ws = await resolve_tool_workspace(session, ctx, write=True)
+    payload = TransferPendingUpdate.model_validate(data)
+    current = next((p for p in await service.pending_pairs(session, ws.id) if p["id"] == transfer_pair_id), None)
+    if current is None:
+        raise ValueError("Pending transfer pair not found")
+    target = {"id": current["id"], "description": current["debit"]["description"],
+        "amount": current["debit"]["amount"], "currency": current["debit"]["currency"],
+        "destination_amount": current["credit"]["amount"], "destination_currency": current["credit"]["currency"],
+        "date": current["debit"]["date"]}
+    preview = {"kind": "update_pending_transfer", "target": target, "proposed": payload.model_dump(mode="json", exclude_unset=True)}
+    if _can_apply(ctx, apply):
+        pair = await service.update_pending(session, ws.id, ctx.user_id, uuid.UUID(transfer_pair_id), payload)
         return {**preview, "applied": True, "transaction_ids": [str(tx.id) for tx in pair]}
     return preview
 

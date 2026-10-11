@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_async_session
 from app.core.workspace_context import WorkspaceContext, current_workspace, current_writable_workspace
-from app.schemas.transfer_schedule import TransferScheduleCreate, TransferScheduleRead, TransferConfirm
+from app.schemas.transfer_schedule import TransferScheduleCreate, TransferScheduleRead, TransferConfirm, TransferPendingUpdate
 from app.services import transfer_schedule_service as service
 
 router = APIRouter(prefix="/api/transfer-schedules", tags=["transfers"])
@@ -57,6 +57,15 @@ async def confirm(pair_id: uuid.UUID, data: TransferConfirm, ctx: WorkspaceConte
 @router.get("/pending")
 async def pending(ctx: WorkspaceContext = Depends(current_workspace), session: AsyncSession = Depends(get_async_session)):
     return await service.pending_pairs(session, ctx.workspace.id)
+
+
+@router.patch("/pairs/{pair_id}")
+async def update_pending(pair_id: uuid.UUID, data: TransferPendingUpdate, ctx: WorkspaceContext = Depends(current_writable_workspace), session: AsyncSession = Depends(get_async_session)):
+    try:
+        pair = await service.update_pending(session, ctx.workspace.id, ctx.user_id, pair_id, data)
+        return {"transaction_ids": [str(tx.id) for tx in pair], "transfer_pair_id": str(pair_id)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @router.delete("/pairs/{pair_id}")
