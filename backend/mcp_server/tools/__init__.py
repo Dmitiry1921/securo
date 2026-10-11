@@ -5,6 +5,7 @@ from mcp_server.tools import (  # noqa: F401
     transactions,
     imports,
     transfers,
+    transfer_matching,
     accounts,
     pockets,
     categories,

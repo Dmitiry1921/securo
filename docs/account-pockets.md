@@ -106,6 +106,29 @@ The tool uses cached FX rates so an on-demand FX sync cannot commit a partial
 import. Missing primary-currency valuations can be filled by the existing FX
 healer. There are no schema migrations or new frontend controls.
 
+### Reconciling bank transfers through MCP
+
+- `propose_link_transfer(transaction_ids=[debit_id, credit_id])` links two
+  existing statement entries using the same service as the UI. It preserves
+  dates, amounts, currencies, pockets and each bank's posting status. Linking
+  never changes account balances or creates transactions. Different native
+  currencies and a Pending debit paired with a Posted credit are supported.
+- `propose_transfer_counterpart(transaction_id, counterpart_account_id)` creates
+  only the missing side of a user-confirmed same-currency transfer into an open
+  manual account. It preserves the anchor's date, amount and posting status.
+  Check the other account's history first. An existing matching entry is rejected
+  so it can be linked instead; a repeated successful call returns the same pair.
+- For cross-currency history, import the actual amounts on both accounts and
+  link those entries; do not infer a missing historical amount from today's FX.
+- Use `propose_assign_pocket` on each side after reconciliation. Account money
+  and pocket allocations are distinct; historical entries before a pocket's
+  start date require reconciling the initial allocation rather than backdating.
+
+Both commands use native `transfer_pair_id`, so UI transfer badges, counterpart
+navigation and report exclusions work as they do for transfers created in the UI.
+Preview first; authorized external clients apply with `apply=true`. Workspace
+write access is revalidated and the transaction rows are locked on apply.
+
 Use branch `codex/account-pockets` from your fork. Build the existing
 **Build and Push Docker Images** workflow on that branch with `image_tag=pockets`
 and the server's architecture. This keeps the preview separate from `latest`.

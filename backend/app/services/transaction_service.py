@@ -1269,6 +1269,7 @@ async def create_transfer_counterpart(
         currency=to_account.currency,
         date=anchor.date,
         type=opposing_type,
+        status=anchor.status,
         source="transfer",
         notes=anchor.notes,
         transfer_pair_id=transfer_pair_id,
