@@ -46,6 +46,7 @@ async def _goal(session, workspace_id, goal_id):
 async def get_account_pockets(
     session: AsyncSession, workspace_id: uuid.UUID, account_id: uuid.UUID
 ) -> PocketAccountRead:
+    today = app_today()
     acc = await account(session, workspace_id, account_id)
     pockets = list(
         (
@@ -112,7 +113,11 @@ async def get_account_pockets(
             ):
                 invalid.add(pocket.id)
                 continue
-            if tx.status == "pending" or tx.date > app_today():
+            # Future rows belong to the forecast, regardless of their status.
+            # Only Pending payments already due reserve today's allocations.
+            if tx.date > today:
+                continue
+            if tx.status == "pending":
                 if tx.type == "debit":
                     reserved[pocket.id] += abs(tx.amount)
             elif tx.status == "posted":
@@ -120,8 +125,8 @@ async def get_account_pockets(
     summary = await get_account_summary(session, account_id, workspace_id)
     assert summary is not None
     balance = Decimal(str(summary["current_balance"]))
-    # Reserve unassigned outgoing payments too; earmarking them again would
-    # make future/pending spending appear available for a second purpose.
+    # Unassigned Pending payments already due reserve current money too.
+    # Future plans do not commit today's funds or credit future income.
     unassigned_reserved = Decimal(0)
     native_balance_unknown = False
     account_transactions = (
@@ -141,7 +146,8 @@ async def get_account_pockets(
         if (
             tx.pocket_id is None
             and tx.type == "debit"
-            and (tx.status == "pending" or tx.date > app_today())
+            and tx.status == "pending"
+            and tx.date <= today
         ):
             unassigned_reserved += abs(tx.amount)
     # Derived allocations reuse the income row itself as the source of truth.
@@ -153,7 +159,7 @@ async def get_account_pockets(
             Transaction.account_id == account_id, Transaction.workspace_id == workspace_id,
             Transaction.type == "credit", Transaction.amount > 0,
             Transaction.source.not_in(["opening_balance", "settlement"]),
-            counts_as_pnl(), is_confirmed(), is_not_future(app_today()),
+            counts_as_pnl(), is_confirmed(), is_not_future(today),
         ))).all()
         for tx in incomes:
             if tx.currency != acc.currency:

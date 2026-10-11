@@ -94,13 +94,15 @@ async def _resolve_current_amount(
                     total += (pocket.balance if goal.pocket_balance_basis == "balance" else pocket.available) * rate
         if goal.pocket_balance_basis == "balance":
             return total.quantize(Decimal("0.01"))
-        # Reserving an internal transfer between two pockets of this goal
+        # Reserving a due internal transfer between two pockets of this goal
         # moves the savings, it does not spend them. The pending destination
         # is not yet in its pocket balance, so retain the source reservation.
+        # Future pairs reserve nothing and must not add goal funding.
         from sqlalchemy.orm import aliased
         from app.models.transaction import Transaction
-        from app.services._query_filters import is_not_ignored
+        from app.services._query_filters import is_not_ignored, is_not_future
         from app.models.category import Category
+        today = app_today()
         destination = aliased(Transaction)
         source_pocket = aliased(Pocket)
         destination_pocket = aliased(Pocket)
@@ -108,10 +110,10 @@ async def _resolve_current_amount(
             source_pocket, source_pocket.id == Transaction.pocket_id,
         ).join(destination, (destination.transfer_pair_id == Transaction.transfer_pair_id)
                & (destination.type == "credit")
-               & or_(destination.status == "pending", destination.date > app_today()))
+               & or_(destination.status == "pending", destination.date > today))
         .join(destination_pocket, destination_pocket.id == destination.pocket_id).where(
             Transaction.workspace_id == workspace_id, Transaction.type == "debit",
-            or_(Transaction.status == "pending", Transaction.date > app_today()),
+            Transaction.status == "pending", is_not_future(today),
             is_not_ignored(), destination.is_ignored.is_(False),
             or_(destination.category_id.is_(None), destination.category_id.not_in(select(Category.id).where(Category.is_ignored.is_(True)))),
             source_pocket.goal_id == goal.id,

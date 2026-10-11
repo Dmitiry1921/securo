@@ -26,8 +26,12 @@ and a unique constraint prevent duplicate pairs on concurrent generation.
 
 Transfers appear on both accounts, in the calendar and balance forecasts,
 including account-filtered cash-flow reports. They are excluded from budgets
-and income/expense totals. Pending movement between two pockets linked to one
-goal retains the goal's savings until the eventual expense is paid.
+and income/expense totals. Future Pending pairs remain visible in these forecasts
+without reserving today's allocations. On the transfer date, a Pending debit
+reserves money in its source pocket or in unallocated funds until confirmed;
+its Pending credit does not increase the destination's spendable balance.
+Pending movement between two pockets linked to one goal retains the goal's
+savings until the eventual expense is paid, without counting future pairs twice.
 
 ## MCP
 

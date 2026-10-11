@@ -18,7 +18,14 @@ assets, income, expenses or extra accounts to reports.
    select that goal. One goal can have several pockets on different accounts;
    a pocket funds at most one goal.
 
-The shown pocket amount is available money after pending outgoing reservations.
+The shown pocket amount is available money after Pending outgoing reservations
+dated today or earlier, using the workspace's calendar. Future-dated transactions
+remain in the forecast and do not reserve current pocket or unallocated money,
+even when their status is Pending or Posted. On their planned day, unconfirmed
+debits start reserving funds automatically; overdue Pending debits keep reserving
+them. Future and Pending credits never increase today's spendable money.
+Manual allocations therefore distribute money already held in the account
+without having to remove transfers funded by a future salary from the forecast.
 Goals use this available amount. Account shortfalls, incompatible imported edits
 and missing exchange rates make goal valuation unavailable instead of using 1:1.
 FX valuation uses already cached rates and does not fetch or commit during a
