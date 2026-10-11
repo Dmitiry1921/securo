@@ -26,6 +26,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { PageHeader } from '@/components/page-header'
 import { CashflowSankey } from '@/components/reports/CashflowSankey'
+import { AccountMoneyMap } from '@/components/reports/AccountMoneyMap'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
@@ -197,6 +198,8 @@ export default function ReportsPage() {
   const [sparklinePage, setSparklinePage] = useState(0)
   const [cashFlowBaseline, setCashFlowBaseline] = useState(false)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [moneyMapView, setMoneyMapView] = useState<'accounts' | 'categories'>('accounts')
+  const [moneyMapMode, setMoneyMapMode] = useState<'actual' | 'plan'>('plan')
   // Active Collection filter (issue #105): scope all report tabs to its
   // accounts; net worth also includes the collection's wallets' assets.
   const { activeAccountIds, activeWalletIds } = useCollectionFilter()
@@ -210,10 +213,11 @@ export default function ReportsPage() {
   const currentTab = REPORT_TABS.find((tab) => tab.key === activeTab) ?? REPORT_TABS[0]
 
   const isCashFlow = activeTab === 'cash_flow'
-  // The Money Map (Sankey) tab is driven by the same income/expenses
-  // composition, aggregated over the selected historical range.
+  // Account routes use the native plans; category composition retains the Sankey.
   const isMoneyMap = activeTab === 'money_map'
-  const rangeOptions = currentTab.rangeOptions
+  const isAccountMap = isMoneyMap && moneyMapView === 'accounts'
+  const isMapPlan = isAccountMap && moneyMapMode === 'plan'
+  const rangeOptions = isMapPlan ? FORWARD_RANGE_OPTIONS : currentTab.rangeOptions
   // Cash flow's forecast presets don't make sense with a past-only calendar
   // range, so custom is only offered for the historical tabs (Net Worth,
   // Income vs Expenses, Money Map).
@@ -250,6 +254,10 @@ export default function ReportsPage() {
     setCompositionView(key === 'net_worth' ? 'netWorth' : 'net')
     setSparklinePage(0)
     setSelectedDate(null)
+    if (key === 'money_map' && moneyMapView === 'accounts') {
+      setRangeKey(moneyMapMode === 'plan' ? '3m' : '30d')
+      return
+    }
     // Clamp the range/interval preset to what the new tab supports.
     const stillValid =
       (rangeKey === CUSTOM_RANGE_KEY && nextTab.supportsCustomRange) ||
@@ -263,9 +271,11 @@ export default function ReportsPage() {
   }
 
   const { data, isLoading, isError, error, refetch } = useQuery<ReportResponse>({
-    queryKey: ['reports', activeTab, rangeKey, months, period ?? null, days ?? null, interval, isCashFlow ? cashFlowBaseline : false, activeAccountIds, activeWalletIds, apiStart ?? null, apiEnd ?? null],
+    queryKey: ['reports', activeTab, rangeKey, months, period ?? null, days ?? null, interval, isCashFlow ? cashFlowBaseline : false, activeAccountIds, activeWalletIds, apiStart ?? null, apiEnd ?? null, isAccountMap, moneyMapMode],
     queryFn: () =>
-      isCashFlow
+      isAccountMap
+        ? reports.moneyMap(moneyMapMode, months, acctIds, apiStart, apiEnd, days, period)
+        : isCashFlow
         ? reports.cashFlow(months, interval, cashFlowBaseline, acctIds)
         : activeTab === 'income_expenses' || isMoneyMap
           ? reports.incomeExpenses(months, interval, acctIds, period, days, apiStart, apiEnd)
@@ -588,8 +598,8 @@ export default function ReportsPage() {
                   to={customTo}
                   defaultFrom={customDefaults.from}
                   defaultTo={customDefaults.to}
-                  disallowFuture
-                  maxRangeYears={CUSTOM_RANGE_MAX_YEARS}
+                  disallowFuture={!isMapPlan}
+                  maxRangeYears={isAccountMap ? 2 : CUSTOM_RANGE_MAX_YEARS}
                   onChange={(f, to) => {
                     setCustomFrom(f)
                     setCustomTo(to)
@@ -648,6 +658,23 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {isMoneyMap && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-lg border border-border bg-card overflow-hidden">
+            {(['accounts', 'categories'] as const).map(view => <button type="button" key={view}
+              aria-pressed={moneyMapView === view}
+              onClick={() => { setMoneyMapView(view); setRangeKey(view === 'accounts' && moneyMapMode === 'plan' ? '3m' : '30d'); setSelectedDate(null) }}
+              className={`px-3 py-2 text-xs font-semibold ${moneyMapView === view ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{t(`moneyMap.${view}`)}</button>)}
+          </div>
+          {isAccountMap && <div className="inline-flex rounded-lg border border-border bg-card overflow-hidden">
+            {(['actual', 'plan'] as const).map(mode => <button type="button" key={mode}
+              aria-pressed={moneyMapMode === mode}
+              onClick={() => { setMoneyMapMode(mode); setRangeKey(mode === 'plan' ? '3m' : '30d'); setSelectedDate(null) }}
+              className={`px-3 py-2 text-xs font-semibold ${moneyMapMode === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>{t(`moneyMap.${mode}`)}</button>)}
+          </div>}
+        </div>
+      )}
+
       {isError && (
         <div className="flex items-center justify-between gap-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 rounded-lg px-4 py-2.5 mb-5">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -684,7 +711,7 @@ export default function ReportsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-0.5 uppercase tracking-wider">
-                  {t(currentTab.labelKey)}
+                  {isAccountMap ? t(isMapPlan ? 'moneyMap.plannedNet' : 'moneyMap.actualNet') : t(currentTab.labelKey)}
                 </p>
                 <div className="flex items-baseline gap-3">
                   <p className="text-3xl font-bold tabular-nums text-foreground">
@@ -697,8 +724,9 @@ export default function ReportsPage() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {mask(`${changePrefix}${formatCurrency(summary?.change_amount ?? 0, userCurrency, locale)}`)}
-                  {' '}{t(meta?.type === 'cash_flow' ? 'reports.vsToday' : 'reports.vsStart')}
+                  {isAccountMap
+                    ? `${data?.money_map?.start_date ?? ''} → ${data?.money_map?.end_date ?? ''} · ${t('moneyMap.netHelp')}`
+                    : <>{mask(`${changePrefix}${formatCurrency(summary?.change_amount ?? 0, userCurrency, locale)}`)}{' '}{t(meta?.type === 'cash_flow' ? 'reports.vsToday' : 'reports.vsStart')}</>}
                 </p>
               </div>
               <div className="flex flex-wrap gap-6">
@@ -710,7 +738,7 @@ export default function ReportsPage() {
                         style={{ backgroundColor: b.color }}
                       />
                       <p className="text-xs font-medium text-muted-foreground">
-                        {t(`reports.${b.key}`, { defaultValue: b.label })}
+                        {t(`${isAccountMap ? 'moneyMap' : 'reports'}.${b.key}`, { defaultValue: b.label })}
                       </p>
                     </div>
                     <p className="text-lg font-bold tabular-nums text-foreground">
@@ -725,7 +753,8 @@ export default function ReportsPage() {
       </div>
 
       {/* Flow (Sankey) */}
-      {isMoneyMap && (
+      {isAccountMap && (isLoading ? <Skeleton className="h-[360px] w-full mb-5" /> : data?.money_map && <AccountMoneyMap key={`${moneyMapMode}:${data.money_map.start_date}:${data.money_map.end_date}:${activeAccountIds}`} data={data.money_map} currency={data.meta.currency} locale={locale} />)}
+      {isMoneyMap && !isAccountMap && (
         <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
           <div className="px-5 pt-5 pb-2 flex items-center justify-between">
             <p className="text-sm font-semibold text-foreground">

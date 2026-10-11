@@ -1,6 +1,6 @@
 import uuid
 from datetime import date
-from typing import Optional
+from typing import Optional, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,8 +9,30 @@ from app.core.database import get_async_session
 from app.core.workspace_context import WorkspaceContext, current_workspace
 from app.schemas.report import ReportResponse
 from app.services import report_service
+from app.services import money_map_service
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
+
+@router.get("/money-map", response_model=ReportResponse)
+async def get_money_map(
+    mode: Literal["actual", "plan"] = "plan",
+    months: int = Query(3, ge=1, le=24),
+    days: int | None = Query(None, ge=1, le=730),
+    period: Literal["ytd"] | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    account_ids: Optional[list[uuid.UUID]] = Query(None),
+    ctx: WorkspaceContext = Depends(current_workspace),
+    session: AsyncSession = Depends(get_async_session),
+):
+    try:
+        return await money_map_service.get_money_map(session, ctx.id, ctx.user_id,
+            mode=mode, months=months, start_date=start_date, end_date=end_date, account_ids=account_ids,
+            days=days, period=period,
+            financial_year_start_month=_financial_year_start_month(ctx.workspace.tax_jurisdiction))
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 # Cap the user-picked custom range so wide windows can't tie up the DB with
 # per-day snapshot fan-out. Ten years covers every realistic personal-finance

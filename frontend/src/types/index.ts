@@ -1117,6 +1117,40 @@ export interface ReportResponse {
   meta: ReportMeta
   composition: ReportCompositionItem[]
   category_trend: CategoryTrendItem[]
+  money_map?: MoneyMapData | null
+}
+
+export interface MoneyMapFlow {
+  id: string
+  date: string
+  kind: 'income' | 'expense' | 'transfer' | 'allocation' | 'investment'
+  status: 'posted' | 'pending' | 'projected'
+  description: string
+  from_account_id: string | null
+  to_account_id: string | null
+  from_account_name: string | null
+  to_account_name: string | null
+  from_pocket_id: string | null
+  to_pocket_id: string | null
+  amount: number
+  currency: string
+  amount_primary: number | null
+  received_amount: number | null
+  received_currency: string | null
+  category_id: string | null
+  category_name: string | null
+}
+
+export interface MoneyMapData {
+  start_date: string
+  end_date: string
+  mode: 'actual' | 'plan'
+  accounts: (PocketAccount & { name: string })[]
+  goals: Goal[]
+  flows: MoneyMapFlow[]
+  budget_gaps: { month: string; category: string; amount: number; currency: string }[]
+  missing_rates: string[]
+  unpaired_transfers: number
 }
 
 // --- Invoices -------------------------------------------------------------

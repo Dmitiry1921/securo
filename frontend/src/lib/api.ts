@@ -1497,6 +1497,18 @@ export const collections = {
 
 // Reports
 export const reports = {
+  moneyMap: async (mode: 'actual' | 'plan', months = 3, accountIds?: string[],
+    startDate?: string, endDate?: string, days?: number, period?: 'ytd'): Promise<ReportResponse> => {
+    const extra = acctIdsParam(accountIds)
+    const { data } = await api.get('/reports/money-map', {
+      params: { mode, months, days, period,
+        ...(startDate && endDate ? { start_date: startDate, end_date: endDate } : {}),
+        ...(extra.params ?? {}),
+      },
+      ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}),
+    })
+    return data
+  },
   netWorth: async (
     months = 12,
     interval = 'monthly',

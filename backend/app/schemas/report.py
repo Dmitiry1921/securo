@@ -1,4 +1,56 @@
 from pydantic import BaseModel
+from typing import Literal
+
+from app.schemas.pocket import PocketAccountRead, PocketIncomeRuleRead
+from app.schemas.goal import GoalRead
+
+
+class MoneyMapAccount(PocketAccountRead):
+    name: str
+
+
+# Resolve the inherited pocket schema's forward reference in its own namespace.
+MoneyMapAccount.model_rebuild(_types_namespace={"PocketIncomeRuleRead": PocketIncomeRuleRead})
+
+
+class MoneyMapFlow(BaseModel):
+    id: str
+    date: str
+    kind: Literal["income", "expense", "transfer", "allocation", "investment"]
+    status: Literal["posted", "pending", "projected"]
+    description: str
+    from_account_id: str | None = None
+    to_account_id: str | None = None
+    from_account_name: str | None = None
+    to_account_name: str | None = None
+    from_pocket_id: str | None = None
+    to_pocket_id: str | None = None
+    amount: float
+    currency: str
+    amount_primary: float | None = None
+    received_amount: float | None = None
+    received_currency: str | None = None
+    category_id: str | None = None
+    category_name: str | None = None
+
+
+class MoneyMapBudgetGap(BaseModel):
+    month: str
+    category: str
+    amount: float
+    currency: str
+
+
+class MoneyMapData(BaseModel):
+    start_date: str
+    end_date: str
+    mode: Literal["actual", "plan"]
+    accounts: list[MoneyMapAccount]
+    goals: list[GoalRead]
+    flows: list[MoneyMapFlow]
+    budget_gaps: list[MoneyMapBudgetGap]
+    missing_rates: list[str]
+    unpaired_transfers: int = 0
 
 
 class ReportBreakdown(BaseModel):
@@ -56,3 +108,4 @@ class ReportResponse(BaseModel):
     meta: ReportMeta
     composition: list[ReportCompositionItem] = []
     category_trend: list[CategoryTrendItem] = []
+    money_map: MoneyMapData | None = None
