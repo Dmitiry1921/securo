@@ -409,6 +409,8 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         end_date: (p.end_date as string) || undefined,
         account_id: (p.account_id as string) || undefined,
         category_id: (p.category_id as string) || undefined,
+        auto_generate: typeof p.auto_generate === 'boolean' ? p.auto_generate : undefined,
+        generation_status: p.generation_status as 'auto' | 'pending' | undefined,
       } as Parameters<typeof recurring.create>[0])
       return rt.id
     }
