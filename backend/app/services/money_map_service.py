@@ -2,8 +2,10 @@
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any, Literal
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.app_clock import get_workspace_timezone, today_in
@@ -21,9 +23,13 @@ from app.services.fx_rate_service import _resolve_rate
 from app.services.recurring_transaction_service import _advance_months
 
 
-async def get_money_map(session, workspace_id, user_id, *, mode="plan", months=3,
-                        start_date=None, end_date=None, account_ids=None, days=None, period=None,
-                        financial_year_start_month=1):
+async def get_money_map(
+    session: AsyncSession, workspace_id: uuid.UUID, user_id: uuid.UUID, *,
+    mode: Literal["actual", "plan"] = "plan", months: int = 3,
+    start_date: date | None = None, end_date: date | None = None,
+    account_ids: list[uuid.UUID] | None = None, days: int | None = None,
+    period: str | None = None, financial_year_start_month: int = 1,
+) -> ReportResponse:
     if mode not in {"actual", "plan"} or not 1 <= months <= 24:
         raise ValueError("Invalid money map mode or months")
     if (start_date is None) != (end_date is None):
@@ -38,6 +44,8 @@ async def get_money_map(session, workspace_id, user_id, *, mode="plan", months=3
     if mode == "actual" and end > today:
         raise ValueError("Actual reports cannot end in the future")
     user = await session.get(User, user_id)
+    if user is None:
+        raise ValueError("User not found")
     primary = user.primary_currency
     accounts = await dashboard_service._get_open_accounts(session, workspace_id)
     by_id = {str(a.id): a for a in accounts}
@@ -57,9 +65,9 @@ async def get_money_map(session, workspace_id, user_id, *, mode="plan", months=3
         pocket_accounts.append(MoneyMapAccount(name=names[key], **snapshot.model_dump()))
         rules.extend(snapshot.income_rules)
 
-    rates = {primary: Decimal(1)}
-    missing_rates = set()
-    async def value(amount, currency, stamped=None):
+    rates: dict[str, Decimal | None] = {primary: Decimal(1)}
+    missing_rates: set[str] = set()
+    async def value(amount: Decimal | float, currency: str, stamped: Decimal | float | None = None) -> float | None:
         if currency == primary:
             return float(amount)
         if stamped is not None:
@@ -77,7 +85,7 @@ async def get_money_map(session, workspace_id, user_id, *, mode="plan", months=3
         Transaction.date <= end, Transaction.is_ignored == False,
         Transaction.source.not_in(["opening_balance", "settlement"]),
     ))).all()
-    rows = []
+    rows: list[dict[str, Any]] = []
     for tx in txs:
         if str(tx.account_id) not in by_id or (tx.category and tx.category.is_ignored):
             continue
@@ -110,8 +118,8 @@ async def get_money_map(session, workspace_id, user_id, *, mode="plan", months=3
                 pocket_id=str(pocket) if pocket else None,
                 income_eligible=not (category and category.treat_as_transfer)))
 
-    flows = []
-    pairs = {}
+    flows: list[MoneyMapFlow] = []
+    pairs: dict[str, dict[str, dict[str, Any]]] = {}
     for row in rows:
         if row.get("transfer_pair_id"):
             pairs.setdefault(row["transfer_pair_id"], {})[row["type"]] = row
@@ -199,12 +207,13 @@ async def get_money_map(session, workspace_id, user_id, *, mode="plan", months=3
             cursor = _advance_months(cursor, 1, 1)
     totals = {kind: sum(f.amount_primary or 0 for f in flows if f.kind == kind)
               for kind in ["income", "expense", "transfer", "allocation"]}
+    flows.sort(key=lambda flow: (flow.date, flow.id))
     return ReportResponse(
         summary=ReportSummary(primary_value=round(totals["income"]-totals["expense"], 2), change_amount=0,
             change_percent=None, breakdowns=[ReportBreakdown(key=kind, label=kind.title(), value=round(amount, 2),
                 color=color) for (kind, amount), color in zip(totals.items(), ["#10B981", "#F43F5E", "#3B82F6", "#8B5CF6"])]),
         trend=[], meta=ReportMeta(type="money_map", series_keys=[], currency=primary, interval="monthly"),
         money_map=MoneyMapData(start_date=start.isoformat(), end_date=end.isoformat(), mode=mode,
-            accounts=pocket_accounts, goals=goals, flows=sorted(flows, key=lambda f: (f.date, f.id)),
+            accounts=pocket_accounts, goals=goals, flows=flows,
             budget_gaps=gaps, missing_rates=sorted(missing_rates), unpaired_transfers=unpaired_transfers),
     )
