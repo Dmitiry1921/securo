@@ -805,12 +805,15 @@ async def import_transactions(
     filename: str = "",
     detected_format: str = "",
     detect_duplicates: bool = True,
+    commit: bool = True,
 ) -> tuple[int, int, int, uuid.UUID]:
     """Import transactions into an account in the given workspace.
 
     `workspace_id` scopes tenant filters + stamps new rows. `user_id`
     is the creator/author recorded on Transaction + ImportLog.
-    Returns (imported, skipped, excluded, import_log_id)."""
+    Returns (imported, skipped, excluded, import_log_id). With `commit=False`,
+    the caller owns the transaction; FX uses cached rates to avoid an implicit
+    commit from the on-demand rate sync."""
     from app.models.import_log import ImportLog
 
     included = [t for t in transactions if not t.excluded]
@@ -1050,7 +1053,9 @@ async def import_transactions(
             incoming.category_id = csv_category_id
 
         if not txn_data.fx_rate:
-            await stamp_primary_amount(session, user_id, incoming)
+            # On-demand FX sync commits its session. Atomic callers use cached
+            # rates; the existing FX healer fills missing conversions later.
+            await stamp_primary_amount(session, user_id, incoming, allow_fetch=commit)
 
         imported += 1
         landed.append(incoming)
@@ -1064,7 +1069,8 @@ async def import_transactions(
     # at a transaction, which has to exist first.
     await reconciliation_service.match_incoming(session, workspace_id, landed)
 
-    await session.commit()
+    if commit:
+        await session.commit()
     return imported, skipped, excluded_count, import_log.id
 
 # Currency symbols and ISO codes around a number ("R$", "$", "NGN ", " EUR").

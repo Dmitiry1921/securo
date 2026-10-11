@@ -79,6 +79,33 @@ An account with pocket history cannot change into an investment/credit account.
 
 ## Test on your server
 
+### Importing historical statements through MCP
+
+`propose_import_history` imports dated, settled rows using the existing importer
+and duplicate detection. It accepts only manual checking, savings and wallet
+accounts in the caller's workspace, with amounts in their native currency.
+Preview first; an authorized external client applies with `apply=true`.
+
+Supply `expected_balance` as an exact decimal string read from Securo. The tool
+locks the account, rejects a changed balance, imports the rows, and reconciles
+the existing `opening_balance` transaction in the same database transaction.
+The current balance is preserved by default. `closing_balance` may explicitly
+replace it with a user-confirmed bank closing balance; it is never inferred from
+an incomplete statement. An inferred negative opening balance is a discrepancy
+to reconcile, not evidence of a bank overdraft.
+
+Every row needs a stable `external_id`; reuse the same IDs on retries. Rows
+without dates, bank pending entries, future dates, foreign currencies and
+inaccessible categories are rejected. Historical rows receive no pocket
+assignment. If matching a recurring placeholder or an income rule changes
+existing pocket balances, the entire import rolls back for manual review.
+Transfers should use a transfer category, not an income category. No paired
+bank transaction is invented when the other account's statement is missing.
+
+The tool uses cached FX rates so an on-demand FX sync cannot commit a partial
+import. Missing primary-currency valuations can be filled by the existing FX
+healer. There are no schema migrations or new frontend controls.
+
 Use branch `codex/account-pockets` from your fork. Build the existing
 **Build and Push Docker Images** workflow on that branch with `image_tag=pockets`
 and the server's architecture. This keeps the preview separate from `latest`.
