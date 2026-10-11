@@ -2973,6 +2973,9 @@
     "initialCycleHelp": "Split this amount from the start date until the next funding day. Later cycles use the monthly envelope."
   },
   "moneyMap": {
+    "chartHelp": "Income → accounts and pockets → transfers and payments. Line widths show amounts in the report currency, not balances. Dashed lines await confirmation; dotted lines are forecasts. Hover to see dates and native currencies.",
+    "throughput": "Flow amount",
+    "details": "Account balances, goals and dated operations",
     "accounts": "Accounts & pockets",
     "categories": "Categories",
     "actual": "Actual",
