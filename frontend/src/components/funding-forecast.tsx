@@ -3,7 +3,7 @@ import { useEffectiveTimezone } from '@/hooks/use-timezone'
 import { useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Settings2, Plus, Pencil, Trash2 } from 'lucide-react'
+import { AlertTriangle, Settings2, Plus, Pencil, Trash2, ChevronDown } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { forecast, accounts, categories, budgets, pockets, recurring } from '@/lib/api'
 import { formatCurrency } from '@/lib/format'
@@ -27,30 +27,53 @@ export function GoalForecastDetails({ goal, defaultOpen = false }: { goal: Forec
   const { t } = useTranslation()
   const locale = useDisplayLocale()
   const { mask } = usePrivacyMode()
+  const [open, setOpen] = useState(defaultOpen)
   const value = (n: string | null) => n === null ? t('funding.unknown') : mask(formatCurrency(Number(n), goal.currency, locale))
-  return <details open={defaultOpen || undefined} className="mt-3 rounded-lg border border-border bg-card p-3 text-xs">
-    <summary className="cursor-pointer flex flex-wrap items-center gap-2">
+  const dateLabel = (timestamp: number) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' }).format(timestamp)
+  const points = goal.history.map(p => ({
+    date: Date.parse(`${p.date}T00:00:00Z`),
+    amount: p.amount === null ? null : Number(p.amount),
+    allocated: p.allocated_amount == null ? null : Number(p.allocated_amount),
+  }))
+  const fundedPoints = points.filter(p => p.amount !== null).length
+  const allocatedPoints = points.filter(p => p.allocated !== null).length
+  const hasData = fundedPoints > 0 || allocatedPoints > 0
+  const uncertain = points.some(p => p.amount === null)
+  return <details open={open} onToggle={e => setOpen(e.currentTarget.open)} className="mt-3 rounded-lg border border-border bg-card p-3 text-xs">
+    <summary className="cursor-pointer list-none flex flex-wrap items-center gap-2">
       <span className={`font-medium ${goal.status === 'shortfall' ? 'text-rose-500' : goal.status === 'funded' ? 'text-emerald-500' : 'text-muted-foreground'}`}>{t(`funding.${goal.status}`)}</span>
       <span>{goal.deadline ?? t('funding.noDeadline')} · {value(goal.projected)} / {value(goal.target)}</span>
+      <span className="inline-flex items-center gap-1 text-primary ml-auto"><ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />{t(open ? 'funding.hideGoalChart' : 'funding.showGoalChart')}</span>
     </summary>
-    <div className="mt-3 grid grid-cols-2 gap-3">
-      <p>{t('funding.shortfall')}: <strong>{value(goal.shortfall)}</strong></p>
-      <p>{t('funding.achievedDate')}: <strong>{goal.achieved_date ?? '—'}</strong></p>
-    </div>
-    {goal.reason && <p className="mt-2 text-amber-600 dark:text-amber-400">{t(`funding.reason.${goal.reason}`)}</p>}
-    <p className="mt-2 text-muted-foreground">{t('funding.goalHelp')}</p>
-    <div className={defaultOpen ? 'h-64 mt-3' : 'h-40 mt-3'} aria-label={t('funding.goalChart')}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={goal.history.map(p => ({ date: p.date, amount: p.amount === null ? null : Number(p.amount) }))}>
-          <XAxis dataKey="date" minTickGap={45} tick={{ fontSize: 10 }} />
-          <YAxis tick={{ fontSize: 10 }} tickFormatter={n => mask(compactCurrency(n, goal.currency, locale))} width={85} />
-          <Tooltip formatter={n => n == null ? t('funding.unknown') : mask(formatCurrency(Number(n), goal.currency, locale))} contentStyle={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', borderRadius: 8 }} />
-          <ReferenceLine ifOverflow="extendDomain" y={Number(goal.target)} stroke="#94a3b8" strokeDasharray="4 4" />
-          <Line dataKey="amount" name={t('funding.projected')} stroke="#818cf8" dot={false} connectNulls={false} isAnimationActive={false} />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
-    {!!goal.cycles.length && <ul className="mt-2 space-y-1">{goal.cycles.map(c => <li key={c.deadline}>{c.deadline}: {value(c.projected)} · {t('funding.shortfall')}: {value(c.shortfall)}</li>)}</ul>}
+    {open && <>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <p>{t('funding.shortfall')}: <strong>{value(goal.shortfall)}</strong></p>
+        <p>{t('funding.achievedDate')}: <strong>{goal.achieved_date ?? '—'}</strong></p>
+      </div>
+      {goal.reason && <p className="mt-2 text-amber-600 dark:text-amber-400">{t(`funding.reason.${goal.reason}`)}</p>}
+      <p className="mt-2 text-muted-foreground">{t('funding.goalHelp')}</p>
+      {uncertain && hasData && <p className="mt-2 text-amber-600 dark:text-amber-400">{t('funding.goalChartUncertain')}</p>}
+      {hasData ? <>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-muted-foreground">
+          {allocatedPoints > 0 && <span className="inline-flex items-center gap-1"><span className="w-4 border-t-2 border-dashed border-amber-500" />{t('funding.goalPocketPlan')}</span>}
+          {fundedPoints > 0 && <span className="inline-flex items-center gap-1"><span className="w-4 border-t-2 border-indigo-400" />{t('funding.goalBackedAmount')}</span>}
+          <span className="inline-flex items-center gap-1"><span className="w-4 border-t border-dashed border-slate-400" />{t('goals.targetAmount')}</span>
+        </div>
+        <div className={defaultOpen ? 'h-64 mt-3 min-w-0' : 'h-40 mt-3 min-w-0'} aria-label={t('funding.goalChart')}>
+          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: defaultOpen ? 256 : 160 }}>
+            <LineChart data={points}>
+              <XAxis dataKey="date" type="number" scale="time" domain={['dataMin', 'dataMax']} minTickGap={45} tick={{ fontSize: 10 }} tickFormatter={dateLabel} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={n => mask(compactCurrency(n, goal.currency, locale))} width={85} />
+              <Tooltip labelFormatter={n => dateLabel(Number(n))} formatter={n => n == null ? t('funding.unknown') : mask(formatCurrency(Number(n), goal.currency, locale))} contentStyle={{ background: 'var(--color-card)', borderColor: 'var(--color-border)', borderRadius: 8 }} />
+              <ReferenceLine ifOverflow="extendDomain" y={Number(goal.target)} stroke="#94a3b8" strokeDasharray="4 4" />
+              {allocatedPoints > 0 && <Line type="stepAfter" dataKey="allocated" name={t('funding.goalPocketPlan')} stroke="#f59e0b" strokeDasharray="5 4" dot={allocatedPoints === 1 ? { r: 3 } : false} connectNulls={false} isAnimationActive={false} />}
+              {fundedPoints > 0 && <Line type="stepAfter" dataKey="amount" name={t('funding.goalBackedAmount')} stroke="#818cf8" dot={fundedPoints === 1 ? { r: 3 } : false} connectNulls={false} isAnimationActive={false} />}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </> : <p className="mt-3 rounded-lg bg-muted/30 p-4 text-muted-foreground" role="status">{t('funding.goalChartEmpty')}</p>}
+      {!!goal.cycles.length && <ul className="mt-2 space-y-1">{goal.cycles.map(c => <li key={c.deadline}>{c.deadline}: {value(c.projected)} · {t('funding.shortfall')}: {value(c.shortfall)}</li>)}</ul>}
+    </>}
   </details>
 }
 

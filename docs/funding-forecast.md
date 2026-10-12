@@ -68,3 +68,18 @@ A pocket-matched expense rule may use a category budget as its amount source.
 That source budget is covered by the forecast envelope, while unrelated historical
 purchases in the old category are still flagged for review rather than silently
 assigned to the pocket.
+
+### Interpreting goal charts
+
+The chart uses calendar time and step changes. Its solid series is the existing
+family-backed amount: gaps mean funding cannot be established for those dates.
+The dashed series is `history.allocated_amount`, the balance of the same simulated
+linked pockets, converted to the goal currency. It describes allocations in the
+current plan, including pockets a bank balance may not cover, and does not change
+funded/shortfall/unknown status, the deadline result, or any account balance.
+Missing conversions and absent linked pockets remain unknown rather than zero.
+
+A chart with no valued amounts shows an explanation instead of empty axes.
+An isolated known amount has a visible marker. In the goals list, "Show chart"
+opens the chart; closed cards do not mount a zero-size chart. The same component
+is used by the goal detail page and the family funding report.

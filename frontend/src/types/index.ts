@@ -1916,7 +1916,7 @@ export interface ForecastGoal {
   goal_id: string; name: string; currency: string; deadline: string | null; target: string
   current: string | null; projected: string | null; shortfall: string | null
   achieved_date: string | null; status: 'funded' | 'shortfall' | 'unknown'; reason?: string | null
-  history: { date: string; amount: string | null }[]
+  history: { date: string; amount: string | null; allocated_amount?: string | null }[]
   cycles: { deadline: string; projected: string | null; shortfall: string | null }[]
 }
 export interface FundingForecast {

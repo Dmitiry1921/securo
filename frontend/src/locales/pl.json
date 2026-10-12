@@ -3198,7 +3198,13 @@
       "shared_funds_shortfall": "Shared unallocated funds cannot cover all obligations and pockets. Resolve plan deficits before relying on feasibility.",
       "unbacked_pocket": "The bank balance does not back all its pockets",
       "outside_horizon": "The deadline is outside this forecast horizon"
-    }
+    },
+    "showGoalChart": "Show chart",
+    "hideGoalChart": "Hide chart",
+    "goalPocketPlan": "Planned pocket balance",
+    "goalBackedAmount": "Backed by family funds",
+    "goalChartUncertain": "Funding is unknown during shortages, so the solid line stops. The dashed line shows pocket balances in the current plan, without guaranteeing funds for every payment.",
+    "goalChartEmpty": "No amounts are available to plot. Check linked pockets and exchange rates; unknown amounts are not replaced with zero."
   },
   "moneyMap": {
     "chartHelp": "Income → accounts and pockets → transfers and payments. Line widths show amounts in the report currency, not balances. Dashed lines await confirmation; dotted lines are forecasts. Hover to see dates and native currencies.",

@@ -291,7 +291,7 @@ export default function GoalsPage() {
               const GoalIcon = getGoalIcon(goal.icon)
               return (
                 <div key={goal.id} className="px-4 sm:px-5 py-4 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-start gap-4">
+                  <div className="flex flex-wrap sm:flex-nowrap items-start gap-4">
                     {/* Icon */}
                     <div
                       className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-white"
@@ -301,8 +301,8 @@ export default function GoalsPage() {
                     </div>
 
                     {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                    <div className="flex-1 min-w-0 basis-[calc(100%-3.5rem)] sm:basis-auto">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         <Link to={`/goals/${goal.id}`} className="text-sm font-semibold text-foreground truncate hover:text-primary hover:underline focus-visible:underline">{goal.name}</Link>
                         <StatusBadge status={goal.status} t={t} />
                         {goal.status !== 'completed' && <OnTrackBadge status={goal.on_track} t={t} />}
@@ -360,7 +360,7 @@ export default function GoalsPage() {
                       </div>
                     </div>
 
-                    <button className="p-1.5 rounded-md text-muted-foreground hover:text-primary" onClick={() => setCycleDialog({ goal, historyOnly: true })} title={t('goals.cycles.history')}>
+                    <button className="ml-14 sm:ml-0 p-1.5 rounded-md text-muted-foreground hover:text-primary" onClick={() => setCycleDialog({ goal, historyOnly: true })} title={t('goals.cycles.history')}>
                       <History size={13} />
                     </button>
                     {/* Actions */}

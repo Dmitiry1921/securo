@@ -464,6 +464,10 @@ def simulate(accounts, flows, goals, rates, start, end, *, scenario=None):
             if links.get(p) == str(goal.id)
         ):
             return None
+        return goal_allocated_amount(goal)
+
+    def goal_allocated_amount(goal):
+        """Native simulated pocket balance, without claiming family funding."""
         vals = [
             convert(v, currencies[pocket_accounts[p]], goal.currency)
             for p, v in pockets.items()
@@ -780,8 +784,13 @@ def simulate(accounts, flows, goals, rates, start, end, *, scenario=None):
         for goal in goals:
             gid = str(goal.id)
             value = goal_amount(goal)
+            allocated = goal_allocated_amount(goal)
             history[gid].append(
-                dict(date=on.isoformat(), amount=str(value) if value is not None else None)
+                dict(
+                    date=on.isoformat(),
+                    amount=str(value) if value is not None else None,
+                    allocated_amount=str(allocated) if allocated is not None else None,
+                )
             )
             daily_peaks[gid][on] = peak[gid] if value is not None else None
             if goal.target_date == on:

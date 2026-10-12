@@ -935,3 +935,28 @@ async def test_pocket_rule_covers_source_budget_without_guessing_purchase_catego
     assert not any(w["code"] == "uncovered_budget" for w in data["warnings"])
     assert any(w["code"] == "unmapped_actual_category" for w in data["warnings"])
     assert Decimal(data["budget_periods"][0]["actual"]) == 0
+
+
+def test_goal_chart_keeps_pocket_plan_when_shared_funding_is_unknown():
+    t, _, goals, _ = run(
+        [account("a", "100", pockets=[pocket("p", "100")]), account("b", "-20")],
+        [],
+        [goal()],
+        end=date(2026, 2, 6),
+    )
+    assert goals[0].status == "unknown" and goals[0].reason == "shared_funds_shortfall"
+    assert all(p["amount"] is None for p in goals[0].history)
+    assert all(p["allocated_amount"] == "100.00" for p in goals[0].history)
+    assert t[0]["balance"] == "80.00"
+
+
+def test_goal_chart_does_not_invent_allocations_without_fx_or_linked_pockets():
+    _, _, goals, _ = run(
+        [account(currency="IDR", pockets=[pocket(balance="100")])],
+        [],
+        [goal()],
+        {"USD": Decimal(1), "IDR": None},
+    )
+    assert goals[0].history[0]["allocated_amount"] is None
+    _, _, goals, _ = run([account()], [], [goal()])
+    assert goals[0].history[0]["allocated_amount"] is None
