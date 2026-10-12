@@ -22,7 +22,7 @@ from app.schemas.recurring_transaction import RecurringFrequency
 from app.services.asset_service import _compute_current_value, _get_latest_value, get_asset_values_at
 from app.services.dashboard_service import _account_balance_at, _get_open_accounts
 from app.services.account_service import get_account_name
-from app.services.fx_rate_service import convert
+from app.services.fx_rate_service import convert, _resolve_rate
 
 
 async def _get_primary_currency(session: AsyncSession, user_id: uuid.UUID) -> str:
@@ -31,20 +31,27 @@ async def _get_primary_currency(session: AsyncSession, user_id: uuid.UUID) -> st
 
 
 async def _convert_amount(
-    session: AsyncSession, amount: Decimal, from_currency: str, to_currency: str
+    session: AsyncSession, amount: Decimal, from_currency: str, to_currency: str,
+    *, allow_fx_fetch: bool = True,
 ) -> Decimal:
     if from_currency == to_currency:
         return amount
+    if not allow_fx_fetch:
+        rate = await _resolve_rate(session, from_currency, to_currency, allow_fetch=False)
+        if rate is None:
+            raise ValueError("Goal valuation unavailable")
+        return amount * rate
     converted, _ = await convert(session, amount, from_currency, to_currency)
     return converted
 
 
 async def _sum_native_totals_in_currency(
-    session: AsyncSession, totals_by_currency: dict[str, float], target_currency: str
+    session: AsyncSession, totals_by_currency: dict[str, float], target_currency: str,
+    *, allow_fx_fetch: bool = True,
 ) -> Decimal:
     total = Decimal("0")
     for currency, amount in totals_by_currency.items():
-        total += await _convert_amount(session, Decimal(str(amount)), currency, target_currency)
+        total += await _convert_amount(session, Decimal(str(amount)), currency, target_currency, allow_fx_fetch=allow_fx_fetch)
     return total
 
 
@@ -63,7 +70,8 @@ async def _linked_name(session: AsyncSession, model: type, item_id: uuid.UUID | 
 
 
 async def _resolve_current_amount(
-    session: AsyncSession, goal: Goal, user_id: uuid.UUID
+    session: AsyncSession, goal: Goal, user_id: uuid.UUID,
+    *, allow_fx_fetch: bool = True,
 ) -> Decimal:
     """Resolve the current_amount based on tracking_type.
 
@@ -131,7 +139,7 @@ async def _resolve_current_amount(
         if account:
             # Use dashboard's balance logic so manual accounts are computed correctly
             bal = Decimal(str(await _account_balance_at(session, account, app_today())))
-            return await _convert_amount(session, bal, account.currency, goal_currency)
+            return await _convert_amount(session, bal, account.currency, goal_currency, allow_fx_fetch=allow_fx_fetch)
         return goal.current_amount
     elif goal.tracking_type == "asset" and goal.asset_id:
         asset = await session.get(Asset, goal.asset_id)
@@ -139,7 +147,7 @@ async def _resolve_current_amount(
             latest = await _get_latest_value(session, asset.id)
             value = _compute_current_value(asset, latest)
             if value is not None:
-                return await _convert_amount(session, Decimal(str(value)), asset.currency, goal_currency)
+                return await _convert_amount(session, Decimal(str(value)), asset.currency, goal_currency, allow_fx_fetch=allow_fx_fetch)
         return goal.current_amount
     elif goal.tracking_type == "asset_group" and goal.asset_group_id:
         group = await session.get(AssetGroup, goal.asset_group_id)
@@ -147,7 +155,7 @@ async def _resolve_current_amount(
             assets_by_currency, _ = await get_asset_values_at(
                 session, workspace_id, by_workspace=True, group_ids=[group.id]
             )
-            return await _sum_native_totals_in_currency(session, assets_by_currency, goal_currency)
+            return await _sum_native_totals_in_currency(session, assets_by_currency, goal_currency, allow_fx_fetch=allow_fx_fetch)
         return goal.current_amount
     elif goal.tracking_type == "net_worth":
         # Reuse dashboard's account query and balance logic so manual accounts
@@ -157,11 +165,11 @@ async def _resolve_current_amount(
         total = Decimal("0")
         for acc in accounts:
             bal = Decimal(str(await _account_balance_at(session, acc, today)))
-            total += await _convert_amount(session, bal, acc.currency, goal_currency)
+            total += await _convert_amount(session, bal, acc.currency, goal_currency, allow_fx_fetch=allow_fx_fetch)
 
         # Add asset values (scoped by the goal's workspace).
         assets_by_currency, _ = await get_asset_values_at(session, workspace_id, by_workspace=True)
-        total += await _sum_native_totals_in_currency(session, assets_by_currency, goal_currency)
+        total += await _sum_native_totals_in_currency(session, assets_by_currency, goal_currency, allow_fx_fetch=allow_fx_fetch)
 
         return total
     else:
@@ -260,7 +268,8 @@ def _compute_on_track(
 
 
 async def _enrich_goal(
-    session: AsyncSession, goal: Goal, user_id: uuid.UUID
+    session: AsyncSession, goal: Goal, user_id: uuid.UUID,
+    *, allow_fx_fetch: bool = True,
 ) -> GoalRead:
     """Enrich a goal with computed fields."""
     last_completion = await session.scalar(select(GoalCompletion).where(
@@ -268,9 +277,9 @@ async def _enrich_goal(
     ).order_by(GoalCompletion.cycle_number.desc()).limit(1))
     valuation_available = True
     try:
-        current = await _resolve_current_amount(session, goal, user_id)
+        current = await _resolve_current_amount(session, goal, user_id, allow_fx_fetch=allow_fx_fetch)
     except ValueError:
-        if goal.tracking_type != "pockets":
+        if goal.tracking_type != "pockets" and allow_fx_fetch:
             raise
         current = Decimal(0)
         valuation_available = False
@@ -295,7 +304,7 @@ async def _enrich_goal(
     target_primary = None
     current_primary = None
     if goal.currency != primary_currency:
-        if goal.tracking_type == "pockets":
+        if goal.tracking_type == "pockets" or not allow_fx_fetch:
             from app.services.fx_rate_service import _resolve_rate
             rate = await _resolve_rate(session, goal.currency, primary_currency, allow_fetch=False)
             if rate is not None and valuation_available:
@@ -346,13 +355,14 @@ async def get_goals(
     workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     status: Optional[str] = None,
+    *, allow_fx_fetch: bool = True,
 ) -> list[GoalRead]:
     query = select(Goal).where(Goal.workspace_id == workspace_id).order_by(Goal.position, Goal.created_at)
     if status:
         query = query.where(Goal.status == status)
     result = await session.execute(query)
     goals = list(result.scalars().all())
-    return [await _enrich_goal(session, g, user_id) for g in goals]
+    return [await _enrich_goal(session, g, user_id, allow_fx_fetch=allow_fx_fetch) for g in goals]
 
 
 async def get_goal(

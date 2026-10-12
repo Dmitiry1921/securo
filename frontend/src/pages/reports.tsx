@@ -1,3 +1,5 @@
+import { ForecastSettings, FundingDetails } from '@/components/funding-forecast'
+import { forecast } from '@/lib/api'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
@@ -181,7 +183,7 @@ export default function ReportsPage() {
   const { t } = useTranslation()
   const { mask, privacyMode, MASK } = usePrivacyMode()
   const { user } = useAuth()
-  const userCurrency = user?.preferences?.currency_display ?? 'USD'
+  const preferredCurrency = user?.preferences?.currency_display ?? 'USD'
   const locale = useDisplayLocale()
 
   const customDefaults = defaultCustomRange()
@@ -198,8 +200,11 @@ export default function ReportsPage() {
   const [sparklineView, setSparklineView] = useState<'byExpenses' | 'byIncome'>('byExpenses')
   const [sparklinePage, setSparklinePage] = useState(0)
   const [cashFlowBaseline, setCashFlowBaseline] = useState(false)
+  const [fundingEnabled, setFundingEnabled] = useState(true)
+  const [scenarioId, setScenarioId] = useState('')
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [moneyMapMode, setMoneyMapMode] = useState<'actual' | 'plan'>('plan')
+  const scenarios = useQuery({ queryKey: ['forecast-scenarios'], queryFn: forecast.scenarios, enabled: activeTab === 'cash_flow' || activeTab === 'money_map' && moneyMapMode === 'plan' })
   // Active Collection filter (issue #105): scope all report tabs to its
   // accounts; net worth also includes the collection's wallets' assets.
   const { activeAccountIds, activeWalletIds } = useCollectionFilter()
@@ -253,6 +258,7 @@ export default function ReportsPage() {
     setSparklinePage(0)
     setSelectedDate(null)
     if (key === 'money_map') {
+      if (rangeKey === CUSTOM_RANGE_KEY && hasCustomRange) return
       setRangeKey(moneyMapMode === 'plan' ? '3m' : '30d')
       return
     }
@@ -269,12 +275,12 @@ export default function ReportsPage() {
   }
 
   const { data, isLoading, isError, error, refetch } = useQuery<ReportResponse>({
-    queryKey: ['reports', activeTab, rangeKey, months, period ?? null, days ?? null, interval, isCashFlow ? cashFlowBaseline : false, activeAccountIds, activeWalletIds, apiStart ?? null, apiEnd ?? null, isMoneyMap, moneyMapMode],
+    queryKey: ['reports', activeTab, rangeKey, months, period ?? null, days ?? null, interval, isCashFlow ? cashFlowBaseline : false, activeAccountIds, activeWalletIds, apiStart ?? null, apiEnd ?? null, isMoneyMap, moneyMapMode, fundingEnabled, scenarioId],
     queryFn: () =>
       isMoneyMap
-        ? reports.moneyMap(moneyMapMode, months, acctIds, apiStart, apiEnd, days, period)
+        ? reports.moneyMap(moneyMapMode, months, acctIds, apiStart, apiEnd, days, period, scenarioId || undefined)
         : isCashFlow
-        ? reports.cashFlow(months, interval, cashFlowBaseline, acctIds)
+        ? reports.cashFlow(months, interval, cashFlowBaseline, acctIds, fundingEnabled, scenarioId || undefined)
         : activeTab === 'income_expenses'
           ? reports.incomeExpenses(months, interval, acctIds, period, days, apiStart, apiEnd)
           : reports.netWorth(months, interval, acctIds, walletIds, period, apiStart, apiEnd),
@@ -285,6 +291,7 @@ export default function ReportsPage() {
   const summary = data?.summary
   const trend = data?.trend ?? []
   const meta = data?.meta
+  const userCurrency = meta?.currency ?? preferredCurrency
 
   // For cash flow we split the line at `forecast_start_date` so the past
   // section renders solid and the forward projection renders dashed.
@@ -538,7 +545,7 @@ export default function ReportsPage() {
         title={t(currentTab.labelKey)}
         action={
           <div className="flex items-center gap-2">
-            {isCashFlow && (
+            {isCashFlow && !fundingEnabled && (
               <div
                 className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
                   cashFlowBaseline
@@ -629,7 +636,7 @@ export default function ReportsPage() {
       />
 
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 mb-5 border-b border-border">
+      <div className="flex items-center gap-1 mb-5 border-b border-border overflow-x-auto">
         {REPORT_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -656,6 +663,13 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {(isCashFlow || isMoneyMap && moneyMapMode === 'plan') && <div className="mb-5 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isCashFlow && <button type="button" aria-pressed={fundingEnabled} className="rounded-lg border border-border bg-card px-3 py-2 text-sm" onClick={() => setFundingEnabled(v => !v)}>{t(fundingEnabled ? 'funding.planningMode' : 'funding.legacyMode')}</button>}
+          {((isCashFlow && fundingEnabled) || (isMoneyMap && moneyMapMode === 'plan')) && <label className="flex items-center gap-2 text-sm">{t('funding.scenario')}<select className="rounded-lg border border-border bg-card px-3 py-2" value={scenarioId} onChange={e => setScenarioId(e.target.value)}><option value="">{t('funding.baseScenario')}</option>{scenarios.data?.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></label>}
+        </div>
+        <ForecastSettings />
+      </div>}
       {isMoneyMap && (
         <div className="mb-5 inline-flex rounded-lg border border-border bg-card overflow-hidden">
           {(['actual', 'plan'] as const).map(mode => <button type="button" key={mode}
@@ -705,7 +719,7 @@ export default function ReportsPage() {
                 </p>
                 <div className="flex items-baseline gap-3">
                   <p className="text-3xl font-bold tabular-nums text-foreground">
-                    {mask(formatCurrency(summary?.primary_value ?? 0, userCurrency, locale))}
+                    {data?.funding && data.funding.ending_balance === null ? t('funding.unknown') : mask(formatCurrency(summary?.primary_value ?? 0, userCurrency, locale))}
                   </p>
                   {summary?.change_percent !== null && summary?.change_percent !== undefined && (
                     <span className={`text-sm font-semibold tabular-nums ${changeColor}`}>
@@ -714,7 +728,7 @@ export default function ReportsPage() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {isMoneyMap
+                  {data?.funding ? `${data.funding.start_date} → ${data.funding.end_date}` : isMoneyMap
                     ? `${data?.money_map?.start_date ?? ''} → ${data?.money_map?.end_date ?? ''} · ${t('moneyMap.netHelp')}`
                     : <>{mask(`${changePrefix}${formatCurrency(summary?.change_amount ?? 0, userCurrency, locale)}`)}{' '}{t(meta?.type === 'cash_flow' ? 'reports.vsToday' : 'reports.vsStart')}</>}
                 </p>
@@ -728,7 +742,7 @@ export default function ReportsPage() {
                         style={{ backgroundColor: b.color }}
                       />
                       <p className="text-xs font-medium text-muted-foreground">
-                        {t(`${isMoneyMap ? 'moneyMap' : 'reports'}.${b.key}`, { defaultValue: b.label })}
+                        {b.key === 'freeFunds' ? t('funding.freeFunds') : t(`${isMoneyMap ? 'moneyMap' : 'reports'}.${b.key}`, { defaultValue: b.label })}
                       </p>
                     </div>
                     <p className="text-lg font-bold tabular-nums text-foreground">
@@ -778,16 +792,16 @@ export default function ReportsPage() {
         </div>
       )}
 
-      {!isMoneyMap && (
+      {!isMoneyMap && (!data?.funding || data.funding.ending_balance !== null) && (
       <>
       {/* Main Trend Chart */}
       <div className="bg-card rounded-xl border border-border shadow-sm mb-5">
-        <div className="px-5 pt-5 pb-2 flex items-center justify-between">
+        <div className="px-5 pt-5 pb-2 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-semibold text-foreground">
             {t(currentTab.labelKey)} · {t('reports.trend')}
           </p>
           {meta && (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               {meta.type === 'net_worth' ? (
                 <div className="flex items-center gap-1.5">
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: '#6366F1' }} />
@@ -803,7 +817,7 @@ export default function ReportsPage() {
                       style={{ backgroundColor: colorMap[key] || '#6366F1' }}
                     />
                     <span className="text-[11px] text-muted-foreground">
-                      {t(`reports.${key}`, { defaultValue: key })}
+                      {key === 'freeFunds' ? t('funding.freeFunds') : t(`reports.${key}`, { defaultValue: key })}
                     </span>
                   </div>
                 ))
@@ -837,7 +851,11 @@ export default function ReportsPage() {
               const startingBalance = summary?.breakdowns.find((b) => b.key === 'startingBalance')?.value ?? 0
               return (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 0, bottom: 0 }} onClick={payload => {
+                    if (!data?.funding || payload.activeLabel == null) return
+                    setSelectedDate(String(payload.activeLabel))
+                    document.getElementById('funding-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                  }}>
                     <defs>
                       <linearGradient id="cashFlowGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#6366F1" stopOpacity={0.2} />
@@ -924,9 +942,11 @@ export default function ReportsPage() {
                       isAnimationActive={false}
                       connectNulls={false}
                     />
+                    {data?.funding && <Area type="monotone" dataKey="freeFunds" stroke="#10B981" strokeWidth={1.5} fill="none" dot={false} connectNulls={false} isAnimationActive={false} />}
                     <Area
                       type="monotone"
                       dataKey="valueForecast"
+                      isAnimationActive={false}
                       stroke="#6366F1"
                       strokeWidth={2.5}
                       strokeDasharray="6 3"
@@ -1060,6 +1080,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Breakdown: Donut + Grouped Bar */}
+      {!data?.funding && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
         {/* Composition widget — summary ring + ranked, labelled detail bars */}
         <div className={`rounded-xl border shadow-sm transition-colors ${selectedDate ? 'bg-primary/5 border-primary/50' : 'bg-card border-border'}`}>
@@ -1582,8 +1603,10 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      )}
       </>
       )}
+      {data?.funding && <div id="funding-details" className="mt-5"><FundingDetails data={data.funding} showSummary={!isCashFlow} selectedDate={selectedDate} onSelectDate={setSelectedDate} /></div>}
       </>
       )}
     </div>

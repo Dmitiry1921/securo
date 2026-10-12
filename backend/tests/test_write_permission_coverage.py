@@ -71,6 +71,7 @@ ALLOWLIST: dict[tuple[str, str], str] = {
     ("POST", "/api/workspaces/{workspace_id}/members"): "owner floor inside the handler",
     ("PATCH", "/api/workspaces/{workspace_id}/members/{member_user_id}"): "owner floor inside the handler",
     ("DELETE", "/api/workspaces/{workspace_id}/members/{member_user_id}"): "owner floor inside the handler",
+    ("POST", "/api/forecast/calculate"): "calculates a scoped forecast; writes no ledger or settings",
     # Deliberate: a POST that persists nothing. See the comment on the route.
     ("POST", "/api/transactions/import/preview"): "parses an upload and returns a preview; writes nothing",
     # Same shape for investment orders: the upload has to be a body, and the
@@ -110,7 +111,7 @@ PUBLIC_ROUTES = {
 WORKSPACE_READ_ROUTES = {
     ("POST", path) for path in (
         "/api/transactions/import/preview", "/api/assets/import/preview",
-        "/api/rules/preview", "/api/export/backup",
+        "/api/rules/preview", "/api/export/backup", "/api/forecast/calculate",
     )
 }
 

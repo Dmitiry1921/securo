@@ -28,6 +28,7 @@ from app.api.rules import router as rules_router
 from app.api.assets import router as assets_router
 from app.api.asset_groups import router as asset_groups_router
 from app.api.collections import router as collections_router
+from app.api.forecast import router as forecast_router
 from app.api.reports import router as reports_router
 from app.api.search import router as search_router
 from app.api.setup import router as setup_router
@@ -172,6 +173,7 @@ app.include_router(
 )
 
 # Domain routes
+app.include_router(forecast_router)
 app.include_router(categories_router)
 app.include_router(category_groups_router)
 app.include_router(rules_router)

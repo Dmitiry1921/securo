@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import {
+  forecast,
   budgets,
   categories,
   goals,
@@ -64,6 +65,10 @@ export function ProposalCard({ toolCallId, data }: Props) {
         'goals',
         'pockets',
         'dashboard',
+        'forecast-rules',
+        'forecast-scenarios',
+        'funding-forecast',
+        'reports',
       ].forEach((key) => qc.invalidateQueries({ queryKey: [key] }))
     },
     onError: (err: unknown) => {
@@ -158,6 +163,7 @@ export function ProposalCard({ toolCallId, data }: Props) {
 }
 
 function kindTitle(kind: ProposalKind, t: ReturnType<typeof useTranslation>['t']): string {
+  if (kind === 'forecast_setting') return t('funding.settings')
   if (kind === 'pocket') return t('pockets.title')
   if (kind === 'assign_pocket') return t('pockets.title')
   if (kind === 'create_transfer') return t('transactions.transferTitle')
@@ -173,6 +179,8 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
   const p = (d.proposed || {}) as Record<string, unknown>
   const tgt = (d.target || {}) as Record<string, unknown>
   switch (kind) {
+    case 'forecast_setting':
+      return `${t('funding.settings')}: ${String(p.name || tgt.id || '')}`
     case 'pocket':
       if (tgt.operation === 'income_rule') return `${t('pockets.incomeRules.title')}: ${String(p.percentage)}%`
       if (tgt.operation === 'stop_income_rule') return t('pockets.incomeRules.stop')
@@ -451,6 +459,13 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
         color: (p.color as string) || undefined,
       } as Parameters<typeof goals.create>[0])
       return g.id
+    }
+    case 'forecast_setting': {
+      const kind = data.target?.kind as 'expense_rule' | 'scenario'
+      if (data.target?.operation === 'delete') await forecast.remove(kind, String(data.target?.id))
+      else if (kind === 'expense_rule') await forecast.saveRule(p as unknown as Parameters<typeof forecast.saveRule>[0])
+      else await forecast.saveScenario(p as unknown as Parameters<typeof forecast.saveScenario>[0])
+      return String(data.target?.id)
     }
     case 'pocket': {
       const operation = data.target?.operation

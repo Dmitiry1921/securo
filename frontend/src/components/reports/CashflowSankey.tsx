@@ -72,7 +72,7 @@ export function CashflowSankey({ data, currency, locale }: {
     const source = link.source as unknown as MoneyMapNode
     const target = link.target as unknown as MoneyMapNode
     return `${source.name} · ${source.detail} → ${target.name} · ${target.detail}\n${t(`moneyMap.${link.kind}`)} · ${t(`moneyMap.${link.status}`)} · ${money(link.value)}\n` +
-      link.flows.map(f => `${f.date} · ${f.description} · ${money(f.amount, f.currency)}${f.received_amount !== null ? ` → ${money(f.received_amount, f.received_currency ?? currency)}` : ''}`).join('\n')
+      link.flows.map(f => `${f.date} · ${f.description}${f.cash_role ? ` · ${t(`funding.cashRole.${f.cash_role}`, { defaultValue: f.cash_role })}` : ''} · ${money(f.amount, f.currency)}${f.received_amount !== null ? ` → ${money(f.received_amount, f.received_currency ?? currency)}` : ''}`).join('\n')
   }
 
   return (

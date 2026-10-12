@@ -3,10 +3,12 @@ from typing import Literal
 
 from app.schemas.pocket import PocketAccountRead, PocketIncomeRuleRead
 from app.schemas.goal import GoalRead
+from app.schemas.forecast import FundingForecast
 
 
 class MoneyMapAccount(PocketAccountRead):
     name: str
+    account_type: str = "checking"
 
 
 # Resolve the inherited pocket schema's forward reference in its own namespace.
@@ -30,6 +32,10 @@ class MoneyMapFlow(BaseModel):
     amount_primary: float | None = None
     received_amount: float | None = None
     received_currency: str | None = None
+    received_date: str | None = None
+    received_status: str | None = None
+    recurring_id: str | None = None
+    cash_role: str | None = None
     category_id: str | None = None
     category_name: str | None = None
 
@@ -109,3 +115,4 @@ class ReportResponse(BaseModel):
     composition: list[ReportCompositionItem] = []
     category_trend: list[CategoryTrendItem] = []
     money_map: MoneyMapData | None = None
+    funding: FundingForecast | None = None

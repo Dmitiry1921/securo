@@ -29,6 +29,7 @@ async def get_money_map(
     start_date: date | None = None, end_date: date | None = None,
     account_ids: list[uuid.UUID] | None = None, days: int | None = None,
     period: str | None = None, financial_year_start_month: int = 1,
+    include_expense_rules: bool = True,
 ) -> ReportResponse:
     if mode not in {"actual", "plan"} or not 1 <= months <= 24:
         raise ValueError("Invalid money map mode or months")
@@ -58,11 +59,11 @@ async def get_money_map(
         # Legacy connected accounts may belong to a connection's workspace.
         if acc.workspace_id != workspace_id:
             balance = Decimal(str(await dashboard_service._account_balance_at(session, acc, today)))
-            pocket_accounts.append(MoneyMapAccount(account_id=acc.id, name=names[key], currency=acc.currency,
+            pocket_accounts.append(MoneyMapAccount(account_id=acc.id, name=names[key], account_type=acc.type, currency=acc.currency,
                 balance=balance, unallocated=balance, unallocated_available=balance, needs_review=False, items=[]))
             continue
         snapshot = await pocket_service.get_account_pockets(session, workspace_id, acc.id)
-        pocket_accounts.append(MoneyMapAccount(name=names[key], **snapshot.model_dump()))
+        pocket_accounts.append(MoneyMapAccount(name=names[key], account_type=acc.type, **snapshot.model_dump()))
         rules.extend(snapshot.income_rules)
 
     rates: dict[str, Decimal | None] = {primary: Decimal(1)}
@@ -80,9 +81,14 @@ async def get_money_map(
             return None
         return float((Decimal(str(amount)) * rate).quantize(Decimal("0.01")))
 
+    window = (Transaction.date >= start) & (Transaction.date <= end)
+    if mode == "plan":
+        window = window | ((Transaction.status == "pending") & (Transaction.date < start))
+        pair_ids = select(Transaction.transfer_pair_id).where(
+            Transaction.workspace_id == workspace_id, window, Transaction.transfer_pair_id.is_not(None))
+        window = window | Transaction.transfer_pair_id.in_(pair_ids)
     txs = (await session.scalars(select(Transaction).options(selectinload(Transaction.category)).where(
-        Transaction.workspace_id == workspace_id, Transaction.date >= start,
-        Transaction.date <= end, Transaction.is_ignored == False,
+        Transaction.workspace_id == workspace_id, window, Transaction.is_ignored == False,
         Transaction.source.not_in(["opening_balance", "settlement"]),
     ))).all()
     rows: list[dict[str, Any]] = []
@@ -99,12 +105,13 @@ async def get_money_map(
             category_id=str(tx.category_id) if tx.category_id else None,
             category_name=tx.category.name if tx.category else None,
             transfer_pair_id=str(tx.transfer_pair_id) if tx.transfer_pair_id else None,
+            recurring_id=str(tx.recurring_transaction_id) if tx.recurring_transaction_id else None,
             income_eligible=not (tx.category and tx.category.treat_as_transfer)))
     schedules = {str(p.id): p for p in (await session.scalars(select(TransferSchedule).where(
         TransferSchedule.workspace_id == workspace_id))).all()}
     if mode == "plan" and visible:
         projected = await dashboard_service.get_projected_transactions(session, workspace_id, user_id,
-            from_date=start, to_date=end)
+            from_date=start, to_date=end, allow_fx_fetch=False)
         categories = {str(c.id): c for c in (await session.scalars(select(Category).where(
             Category.workspace_id == workspace_id))).all()}
         for tx in projected:
@@ -136,7 +143,7 @@ async def get_money_map(
             from_account_name=None if credit else names[key], to_account_name=names[key] if credit else None,
             from_pocket_id=None if credit else row["pocket_id"], to_pocket_id=row["pocket_id"] if credit else None,
             amount=row["amount"], currency=row["currency"], amount_primary=amount_primary,
-            category_id=row["category_id"], category_name=row.get("category_name")))
+            recurring_id=row.get("recurring_id"), category_id=row["category_id"], category_name=row.get("category_name")))
         # Show the existing percentage rule as an earmark, never as spending.
         if credit and row["income_eligible"] and row["currency"] == by_id[key].currency:
             cumulative = Decimal(0)
@@ -154,7 +161,7 @@ async def get_money_map(
                     description=f"{rule.percentage}% · {row['description']}",
                     from_account_id=key, to_account_id=key, from_account_name=names[key], to_account_name=names[key],
                     from_pocket_id=row["pocket_id"], to_pocket_id=str(rule.pocket_id),
-                    amount=float(part), currency=row["currency"], amount_primary=await value(part, row["currency"])))
+                    amount=float(part), currency=row["currency"], recurring_id=row.get("recurring_id"), amount_primary=await value(part, row["currency"])))
     unpaired_transfers = 0
     for pair_id, pair in pairs.items():
         debit, credit = pair.get("debit"), pair.get("credit")
@@ -171,7 +178,7 @@ async def get_money_map(
             from_pocket_id=debit["pocket_id"], to_pocket_id=credit["pocket_id"],
             amount=debit["amount"], currency=debit["currency"],
             amount_primary=await value(debit["amount"], debit["currency"], debit["amount_primary"]),
-            received_amount=credit["amount"], received_currency=credit["currency"]))
+            received_amount=credit["amount"], received_currency=credit["currency"], received_date=credit["date"], received_status=credit["status"]))
     if visible:
         movements = (await session.scalars(select(PocketMovement).where(
             PocketMovement.workspace_id == workspace_id,
@@ -190,8 +197,17 @@ async def get_money_map(
                 amount=float(movement.amount), currency=by_id[key].currency,
                 amount_primary=await value(movement.amount, by_id[key].currency)))
 
+    if mode == "plan" and include_expense_rules:
+        from app.services import forecast_service
+        expense_rules = await forecast_service.list_settings(session, workspace_id, "expense_rule")
+        for rule in expense_rules:
+            await value(0, rule.currency)
+        budget_flows, _, _ = await forecast_service.expense_flows(session, workspace_id, expense_rules,
+            max(start, today), end, [f for f in flows if f.status != "posted"], rates)
+        flows.extend(budget_flows)
+
     linked_goals = {p.goal_id for a in pocket_accounts for p in a.items if p.goal_id}
-    goals = [g for g in await goal_service.get_goals(session, workspace_id, user_id) if g.id in linked_goals]
+    goals = [g for g in await goal_service.get_goals(session, workspace_id, user_id, allow_fx_fetch=False) if g.id in linked_goals]
     gaps = []
     if mode == "plan" and account_ids is None:
         covered = {(f.date[:7], f.category_id) for f in flows if f.kind == "expense"}

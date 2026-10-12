@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.app_clock import app_today
-from app.services import dashboard_service, report_service, money_map_service
+from app.services import dashboard_service, report_service, money_map_service, forecast_service
 from mcp_server.auth import CallContext
 from mcp_server.registry import tool
 from mcp_server.tools._helpers import parse_date, resolve_workspace_id
@@ -28,6 +28,7 @@ def _serialize_report(r: Any) -> dict[str, Any]:
     description="Account money routes: income, paired internal transfers, pockets, linked goals and expenses. actual includes confirmed history; plan includes Pending and native recurring forecasts. Allocations and transfers are never counted as external income/expenses. Budget-only categories and missing exchange rates are explicit. This read never creates transactions.",
     parameters={"type": "object", "properties": {
         "mode": {"type": "string", "enum": ["actual", "plan"], "default": "plan"},
+        "scenario_id": {"type": "string", "format": "uuid"},
         "months": {"type": "integer", "minimum": 1, "maximum": 24, "default": 3},
         "start_date": {"type": "string", "format": "date"},
         "end_date": {"type": "string", "format": "date"},
@@ -37,14 +38,20 @@ def _serialize_report(r: Any) -> dict[str, Any]:
     }, "additionalProperties": False}, tags=["read", "reports"],
 )
 async def get_money_map(*, session, ctx, mode="plan", months=3, start_date=None,
-                        end_date=None, account_ids=None, page=1, limit=50):
+                        end_date=None, account_ids=None, page=1, limit=50, scenario_id=None):
     import uuid
     if page < 1 or not 1 <= limit <= 200:
         raise ValueError("Choose a positive page and limit from 1 to 200")
     ws_id = await resolve_workspace_id(session, ctx)
-    report = await money_map_service.get_money_map(session, ws_id, ctx.user_id, mode=mode, months=months,
-        start_date=parse_date(start_date), end_date=parse_date(end_date),
-        account_ids=[uuid.UUID(key) for key in account_ids] if account_ids is not None else None)
+    parsed_start = parse_date(start_date)
+    if mode == "plan" and (parsed_start is None or parsed_start >= app_today()):
+        report = await forecast_service.as_money_map_report(session, ws_id, ctx.user_id, months=months,
+            start_date=parsed_start, end_date=parse_date(end_date), scenario_id=uuid.UUID(scenario_id) if scenario_id else None,
+            account_ids=[uuid.UUID(key) for key in account_ids] if account_ids is not None else None)
+    else:
+        report = await money_map_service.get_money_map(session, ws_id, ctx.user_id, mode=mode, months=months,
+            start_date=parse_date(start_date), end_date=parse_date(end_date),
+            account_ids=[uuid.UUID(key) for key in account_ids] if account_ids is not None else None)
     result = report.model_dump(mode="json")
     flows = result["money_map"]["flows"]
     result["flow_total"] = len(flows)
@@ -108,10 +115,12 @@ async def get_income_expenses(
 
 @tool(
     name="get_cash_flow",
-    description="Forward-looking cash flow projection — current balance plus future bookings and recurring transactions.",
+    description="Forward-looking cash flow projection — current balance plus future bookings and recurring transactions. Set funding=true to include budget expenses and shared goal feasibility using the same calculation as the UI.",
     parameters={
         "type": "object",
         "properties": {
+            "funding": {"type": "boolean", "default": False},
+            "scenario_id": {"type": "string", "format": "uuid"},
             "months": {"type": "integer", "minimum": 1, "maximum": 24, "default": 6},
             "interval": {"type": "string", "enum": ["daily", "weekly", "monthly"], "default": "daily"},
         },
@@ -125,8 +134,18 @@ async def get_cash_flow(
     ctx: CallContext,
     months: int = 6,
     interval: str = "daily",
+    funding: bool = False,
+    scenario_id: str | None = None,
 ) -> dict[str, Any]:
     ws_id = await resolve_workspace_id(session, ctx)
+    if funding:
+        import uuid
+        from app.schemas.forecast import ForecastRequest
+        rep = await forecast_service.as_cash_flow_report(session, ws_id, ctx.user_id,
+            ForecastRequest(months=int(months), scenario_id=uuid.UUID(scenario_id) if scenario_id else None), interval=interval)
+        return _serialize_report(rep)
+    if scenario_id:
+        raise ValueError("Scenarios require funding=true")
     rep = await report_service.get_cash_flow_report(
         session, ws_id, ctx.user_id, months=int(months), interval=interval, currency=_pri_currency(ctx)
     )

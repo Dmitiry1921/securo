@@ -5,6 +5,7 @@ from typing import Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.app_clock import app_today
 from app.core.database import get_async_session
 from app.core.workspace_context import WorkspaceContext, current_workspace
 from app.schemas.report import ReportResponse
@@ -17,6 +18,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.get("/money-map", response_model=ReportResponse)
 async def get_money_map(
     mode: Literal["actual", "plan"] = "plan",
+    scenario_id: uuid.UUID | None = None,
     months: int = Query(3, ge=1, le=24),
     days: int | None = Query(None, ge=1, le=730),
     period: Literal["ytd"] | None = None,
@@ -27,6 +29,10 @@ async def get_money_map(
     session: AsyncSession = Depends(get_async_session),
 ):
     try:
+        if mode == "plan" and (start_date is None or start_date >= app_today()):
+            from app.services.forecast_service import as_money_map_report
+            return await as_money_map_report(session, ctx.id, ctx.user_id, months=months,
+                start_date=start_date, end_date=end_date, account_ids=account_ids, scenario_id=scenario_id)
         return await money_map_service.get_money_map(session, ctx.id, ctx.user_id,
             mode=mode, months=months, start_date=start_date, end_date=end_date, account_ids=account_ids,
             days=days, period=period,
@@ -168,10 +174,20 @@ async def get_cash_flow(
     months: int = Query(6, ge=1, le=12),
     interval: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
     baseline: bool = Query(False),
+    funding: bool = Query(False),
+    scenario_id: uuid.UUID | None = None,
     account_ids: Optional[list[uuid.UUID]] = Query(None),
     ctx: WorkspaceContext = Depends(current_workspace),
     session: AsyncSession = Depends(get_async_session),
 ):
+    if funding:
+        from app.schemas.forecast import ForecastRequest
+        from app.services.forecast_service import as_cash_flow_report
+        try:
+            return await as_cash_flow_report(session, ctx.id, ctx.user_id,
+                ForecastRequest(months=months, scenario_id=scenario_id, account_ids=account_ids),interval=interval)
+        except ValueError as error:
+            raise HTTPException(422, detail=str(error)) from error
     return await report_service.get_cash_flow_report(
         session, ctx.workspace.id, ctx.user_id, months, interval, ctx.user.primary_currency,
         baseline=baseline, account_ids=account_ids,

@@ -1,3 +1,4 @@
+from app.models.forecast import ForecastSetting
 from app.models.user import User
 from app.models.passkey import UserPasskey
 from app.models.workspace import Workspace, WorkspaceMember, WorkspaceTaxId
@@ -50,6 +51,7 @@ from app.models.reconciliation import (
 from app.core import workspace_autostamp  # noqa: F401, E402
 
 __all__ = [
+    "ForecastSetting",
     "User",
     "UserPasskey",
     "Workspace",

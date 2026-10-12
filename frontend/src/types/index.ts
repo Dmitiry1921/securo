@@ -1119,9 +1119,11 @@ export interface ReportResponse {
   composition: ReportCompositionItem[]
   category_trend: CategoryTrendItem[]
   money_map?: MoneyMapData | null
+  funding?: FundingForecast | null
 }
 
 export interface MoneyMapFlow {
+  cash_role?: string | null
   id: string
   date: string
   kind: 'income' | 'expense' | 'transfer' | 'allocation' | 'investment'
@@ -1897,4 +1899,35 @@ export interface TransferSchedule {
   start_date: string
   end_date: string | null
   is_active: boolean
+}
+
+export interface ExpenseForecastRule {
+  id: string; name: string; account_id: string; pocket_id: string | null; budget_id: string | null
+  amount: string | null; currency: string; category_ids: string[]; actual_account_ids?: string[]; cycle_day: number
+  distribution: 'daily' | 'weekly' | 'period_start'; weekday: number; mode?: 'budget' | 'payments_only'; credit_kind?: 'income' | 'refund' | 'reimbursement' | 'loan_principal' | 'other'
+  start_date: string; end_date: string | null; enabled: boolean
+  history_from?: string | null; history_through?: string | null; reviewed_history?: boolean
+}
+export interface ForecastScenario {
+  id: string; name: string; excluded_recurring_ids: string[]; income_delay_days: number
+  income_multiplier: string; expense_multiplier: string; fx_rates: Record<string, string>
+}
+export interface ForecastGoal {
+  goal_id: string; name: string; currency: string; deadline: string | null; target: string
+  current: string | null; projected: string | null; shortfall: string | null
+  achieved_date: string | null; status: 'funded' | 'shortfall' | 'unknown'; reason?: string | null
+  history: { date: string; amount: string | null }[]
+  cycles: { deadline: string; projected: string | null; shortfall: string | null }[]
+}
+export interface FundingForecast {
+  start_date: string; end_date: string; currency: string; scenario: ForecastScenario | null
+  rates: { currency: string; target: string; rate: string | null; date: string | null; source: string }[]
+  opening_accounts: (PocketAccount & { name: string })[]
+  timeline: { date: string; balance: string | null; free_funds: string | null; accounts: Record<string, string | null>; pockets: Record<string, string>; event_ids: string[] }[]
+  events: { id: string; date: string; kind: string; cash_role?: string; status: string; description: string; amount: string; currency: string; from_account_id: string | null; to_account_id: string | null; funded: string | null; shortfall: string | null }[]
+  goals: ForecastGoal[]
+  warnings: { code: string; date: string | null; account_id: string | null; goal_id: string | null; flow_id: string | null; amount: string | null; currency: string | null; detail: string }[]
+  budget_periods: { rule_id: string; name: string; start: string; end: string; currency: string; target: string; actual: string; committed: string; forecast: string; exceeded: string }[]
+  history_recommendations: { rule_id: string; status: string; reason: string; currency?: string; median?: string; minimum?: string; maximum?: string }[]
+  ending_balance: string | null; free_funds: string | null
 }

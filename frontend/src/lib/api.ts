@@ -1498,10 +1498,10 @@ export const collections = {
 // Reports
 export const reports = {
   moneyMap: async (mode: 'actual' | 'plan', months = 3, accountIds?: string[],
-    startDate?: string, endDate?: string, days?: number, period?: 'ytd'): Promise<ReportResponse> => {
+    startDate?: string, endDate?: string, days?: number, period?: 'ytd', scenarioId?: string): Promise<ReportResponse> => {
     const extra = acctIdsParam(accountIds)
     const { data } = await api.get('/reports/money-map', {
-      params: { mode, months, days, period,
+      params: { mode, months, days, period, scenario_id: scenarioId,
         ...(startDate && endDate ? { start_date: startDate, end_date: endDate } : {}),
         ...(extra.params ?? {}),
       },
@@ -1554,9 +1554,9 @@ export const reports = {
     })
     return data
   },
-  cashFlow: async (months = 6, interval = 'daily', baseline = false, accountIds?: string[]): Promise<ReportResponse> => {
+  cashFlow: async (months = 6, interval = 'daily', baseline = false, accountIds?: string[], funding = false, scenarioId?: string): Promise<ReportResponse> => {
     const extra = acctIdsParam(accountIds)
-    const { data } = await api.get('/reports/cash-flow', { params: { months, interval, baseline, ...(extra.params ?? {}) }, ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}) })
+    const { data } = await api.get('/reports/cash-flow', { params: { months, interval, baseline, funding, scenario_id: scenarioId, ...(extra.params ?? {}) }, ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}) })
     return data
   },
 }
@@ -2319,4 +2319,14 @@ export const transferSchedules = {
   confirm: async (id: string, data: { amount: number; destination_amount: number; date: string }) => (await api.post(`/transfer-schedules/pairs/${id}/confirm`, data)).data,
   updatePending: async (id: string, data: { amount: number | string; destination_amount: number | string; date: string; notes?: string | null }) => (await api.patch(`/transfer-schedules/pairs/${id}`, data)).data,
   deletePending: async (id: string) => (await api.delete(`/transfer-schedules/pairs/${id}`)).data,
+}
+
+
+export const forecast = {
+  rules: async (): Promise<import('@/types').ExpenseForecastRule[]> => (await api.get('/forecast/rules')).data,
+  scenarios: async (): Promise<import('@/types').ForecastScenario[]> => (await api.get('/forecast/scenarios')).data,
+  calculate: async (request: { months?: number; end_date?: string; scenario_id?: string; scenario?: import('@/types').ForecastScenario; account_ids?: string[] } = {}): Promise<import('@/types').FundingForecast> => (await api.post('/forecast/calculate', request)).data,
+  saveRule: async (rule: import('@/types').ExpenseForecastRule) => (await api.put(`/forecast/rules/${rule.id}`, rule)).data,
+  saveScenario: async (scenario: import('@/types').ForecastScenario) => (await api.put(`/forecast/scenarios/${scenario.id}`, scenario)).data,
+  remove: async (kind: 'expense_rule' | 'scenario', id: string) => { await api.delete(`/forecast/${kind}/${id}`) },
 }

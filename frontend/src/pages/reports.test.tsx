@@ -10,10 +10,12 @@ const api = vi.hoisted(() => ({
     netWorth: vi.fn(),
     incomeExpenses: vi.fn(),
     cashFlow: vi.fn(),
+    moneyMap: vi.fn(),
   },
 }))
 
-vi.mock('@/lib/api', () => ({ reports: api.reports }))
+vi.mock('@/lib/api', () => ({ reports: api.reports, forecast: { scenarios: vi.fn().mockResolvedValue([]), rules: vi.fn().mockResolvedValue([]) } }))
+vi.mock('@/contexts/workspace-context', () => ({ useWorkspace: () => ({ canWrite: false }) }))
 
 vi.mock('@/hooks/use-display-locale', () => ({
   useDisplayLocale: () => 'en-US',
@@ -49,6 +51,7 @@ beforeEach(() => {
   api.reports.netWorth.mockResolvedValue(emptyReport('net_worth'))
   api.reports.incomeExpenses.mockResolvedValue(emptyReport('income_expenses'))
   api.reports.cashFlow.mockResolvedValue(emptyReport('cash_flow'))
+  api.reports.moneyMap.mockResolvedValue(emptyReport('money_map'))
 })
 
 afterEach(() => vi.useRealTimers())
@@ -141,8 +144,9 @@ it.each([
   const custom = screen.getByRole('button', { name: t('reports.customRange') })
   await user.click(custom)
   await user.click(screen.getByRole('button', { name: t('transactions.filtersBar.apply') }))
-  const reportApi = tab === 'reports.netWorth' ? api.reports.netWorth : api.reports.incomeExpenses
-  await waitFor(() => expect(reportApi.mock.calls.at(-1)?.slice(-2)).toEqual([
+  const reportApi = tab === 'reports.netWorth' ? api.reports.netWorth : tab === 'reports.moneyMap' ? api.reports.moneyMap : api.reports.incomeExpenses
+  const dates = () => tab === 'reports.moneyMap' ? reportApi.mock.calls.at(-1)?.slice(3, 5) : reportApi.mock.calls.at(-1)?.slice(-2)
+  await waitFor(() => expect(dates()).toEqual([
     '2026-01-01', '2026-09-12',
   ]))
   await user.click(custom)
@@ -150,8 +154,8 @@ it.each([
   await user.click(screen.getByRole('button', { name: t('transactions.filtersBar.apply') }))
   await waitFor(() => {
     expect(screen.getByRole('button', { name: t(fallback) })).toHaveClass('bg-primary')
-    expect(reportApi.mock.calls.at(-1)?.[0]).toBe(months)
-    expect(reportApi.mock.calls.at(-1)?.slice(-2)).toEqual([undefined, undefined])
+    expect(reportApi.mock.calls.at(-1)?.[tab === 'reports.moneyMap' ? 1 : 0]).toBe(months)
+    expect(dates()).toEqual([undefined, undefined])
   })
   expect(custom).toHaveTextContent(t('reports.customRange'))
 })
@@ -163,18 +167,18 @@ it('preserves saved custom dates across supported tabs and preset dismissal', as
   await user.click(screen.getByRole('button', { name: t('transactions.filtersBar.apply') }))
   for (const tab of ['reports.incomeExpenses', 'reports.moneyMap']) {
     await user.click(screen.getByRole('button', { name: t(tab) }))
-    await waitFor(() => expect(api.reports.incomeExpenses.mock.calls.at(-1)?.slice(-2))
+    await waitFor(() => expect(tab === 'reports.moneyMap' ? api.reports.moneyMap.mock.calls.at(-1)?.slice(3, 5) : api.reports.incomeExpenses.mock.calls.at(-1)?.slice(-2))
       .toEqual(['2026-01-01', '2026-09-12']))
     expect(custom).toHaveClass('bg-primary')
   }
   await user.click(screen.getByRole('button', { name: t('reports.range6m') }))
-  await waitFor(() => expect(api.reports.incomeExpenses.mock.calls.at(-1)?.slice(-2))
+  await waitFor(() => expect(api.reports.moneyMap.mock.calls.at(-1)?.slice(3, 5))
     .toEqual([undefined, undefined]))
-  const count = api.reports.incomeExpenses.mock.calls.length
+  const count = api.reports.moneyMap.mock.calls.length
   await user.click(custom)
   await user.click(screen.getByRole('button', { name: t('transactions.filtersBar.reset') }))
   await user.click(screen.getByRole('button', { name: t('transactions.filtersBar.cancel') }))
-  expect(api.reports.incomeExpenses).toHaveBeenCalledTimes(count)
+  expect(api.reports.moneyMap).toHaveBeenCalledTimes(count)
   expect(screen.getByRole('button', { name: t('reports.range6m') })).toHaveClass('bg-primary')
   await user.click(custom)
   await user.click(screen.getByRole('button', { name: t('transactions.filtersBar.apply') }))

@@ -1,3 +1,5 @@
+import { GoalForecastDetails } from '@/components/funding-forecast'
+import { forecast } from '@/lib/api'
 import { GoalCycleDialog } from '@/components/goal-cycle-dialog'
 import { createElement, useState } from 'react'
 import { getAccountName, sortAccountsByDisplayName } from '@/lib/account-utils'
@@ -158,6 +160,8 @@ export default function GoalsPage() {
     queryFn: () => goalsApi.list(statusFilter || undefined),
   })
 
+  const goalForecast = useQuery({ queryKey: ['funding-forecast', 12], queryFn: () => forecast.calculate({ months: 12 }) })
+
   const { data: accountsList } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => accountsApi.list(),
@@ -315,6 +319,9 @@ export default function GoalsPage() {
                           {goal.valuation_available === false ? '—' : `${goal.percentage.toFixed(0)}%`}
                         </span>
                       </div>
+
+                      {goalForecast.data?.goals.find(g => g.goal_id === goal.id) && <GoalForecastDetails goal={goalForecast.data.goals.find(g => g.goal_id === goal.id)!} />}
+                      {goalForecast.isError && <p className="text-xs text-amber-500 mt-2">{t('funding.loadError')}</p>}
 
                       {/* Details row */}
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
