@@ -174,6 +174,8 @@ async def test_http_mcp_readonly_and_period_remainder(
     from mcp_server.auth import CallContext
     from mcp_server.tools.forecast import get_funding_forecast, propose_forecast_setting
 
+    test_user.preferences = {**(test_user.preferences or {}), "currency_display": "USD"}
+    await session.commit()
     today = app_today()
     ac = await client.post(
         "/api/accounts",
@@ -252,6 +254,34 @@ async def test_http_mcp_readonly_and_period_remainder(
     )
     assert scoped.status_code == 200, scoped.text
     assert scoped.json()["funding"]["events"] == data["events"]
+    from datetime import timedelta
+
+    returned = await client.post(
+        "/api/transactions",
+        headers=auth_headers,
+        json={
+            "account_id": aid,
+            "description": "Purchase refund",
+            "amount": "10",
+            "currency": "USD",
+            "date": (today + timedelta(days=1)).isoformat(),
+            "type": "credit",
+            "status": "pending",
+            "category_id": cid,
+        },
+    )
+    assert returned.status_code == 201, returned.text
+    mapped = await client.get(
+        "/api/reports/money-map", headers=auth_headers, params={"mode": "plan", "months": 2}
+    )
+    assert mapped.status_code == 200, mapped.text
+    projected = mapped.json()
+    gross = sum(
+        Decimal(str(f["amount_primary"]))
+        for f in projected["money_map"]["flows"]
+        if f["kind"] == "expense"
+    )
+    assert Decimal(str(projected["summary"]["primary_value"])) == -gross + 10
     # An overlapping category is rejected rather than silently splitting purchases.
     new_id = str(uuid.uuid4())
     bad = await client.put(

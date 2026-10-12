@@ -1461,15 +1461,21 @@ async def as_money_map_report(
     data.flows = rows
     data.budget_gaps = []
     totals = {
-        kind: sum(f.amount_primary or 0 for f in rows if f.kind == kind)
+        kind: sum((Decimal(str(f.amount_primary or 0)) for f in rows if f.kind == kind), Decimal(0))
         for kind in ["income", "expense", "transfer", "allocation"]
     }
+    # Cash returns offset purchases; principal financing remains outside P&L.
+    totals["expense"] -= sum(
+        Decimal(str(f.amount_primary or 0))
+        for f in rows
+        if f.cash_role in ("refund", "reimbursement") and f.to_account_id and not f.from_account_id
+    )
     base.summary = ReportSummary(
-        primary_value=round(totals["income"] - totals["expense"], 2),
+        primary_value=float(money(totals["income"] - totals["expense"])),
         change_amount=0,
         change_percent=None,
         breakdowns=[
-            ReportBreakdown(key=k, label=k.title(), value=round(v, 2), color=c)
+            ReportBreakdown(key=k, label=k.title(), value=float(money(v)), color=c)
             for (k, v), c in zip(totals.items(), ["#10B981", "#F43F5E", "#3B82F6", "#8B5CF6"])
         ],
     )
