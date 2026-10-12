@@ -15,7 +15,7 @@ const plan = { start_date: '2026-10-12', end_date: '2027-10-11', currency: 'USD'
 const render = () => renderWithProviders(<GoalDetailPage />, { route: '/goals/g', path: '/goals/:id' })
 beforeEach(() => {
   vi.mocked(goals.get).mockResolvedValue(target as Awaited<ReturnType<typeof goals.get>>)
-  vi.mocked(forecast.calculate).mockResolvedValue(plan as unknown as Awaited<ReturnType<typeof forecast.calculate>>)
+  vi.mocked(forecast.calculate).mockResolvedValue({ ...plan, goals: [...plan.goals, { ...plan.goals[0], goal_id: 'other', name: 'Unrelated goal' }] } as unknown as Awaited<ReturnType<typeof forecast.calculate>>)
   vi.mocked(forecast.scenarios).mockResolvedValue([{ id: 'scenario', name: 'Delayed' }] as Awaited<ReturnType<typeof forecast.scenarios>>)
   vi.mocked(transferSchedules.list).mockResolvedValue([])
 })
@@ -24,7 +24,8 @@ describe('Goal detail page', () => {
     render()
     expect(await screen.findByRole('heading', { name: target.name })).toBeInTheDocument()
     expect(await screen.findByText('Income contribution')).toBeInTheDocument()
-    expect(screen.getByLabelText(t('funding.goalChart'))).toBeInTheDocument()
+    expect(screen.getAllByLabelText(t('funding.goalChart'))).toHaveLength(1)
+    expect(screen.getByLabelText(t('funding.goalChart')).closest('details')).toBeNull()
     expect(screen.getByText('$60.00')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Source · Savings' })).toHaveAttribute('href', '/accounts/a')
     expect(screen.getByRole('link', { name: t('goalDetail.back') })).toHaveAttribute('href', '/goals')

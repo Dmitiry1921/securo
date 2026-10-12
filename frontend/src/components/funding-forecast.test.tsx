@@ -75,3 +75,20 @@ describe('Goal chart calendar and isolated points', () => {
     expect(screen.getByText(t('funding.goalChartUncertain'))).toBeInTheDocument()
   })
 })
+
+
+describe('Goal chart display context', () => {
+  it('shows only the forecast summary in the goals list', () => {
+    const { container } = renderWithProviders(<GoalForecastDetails goal={goal} view="summary" />)
+    expect(screen.queryByLabelText(t('funding.goalChart'))).not.toBeInTheDocument()
+    expect(container.querySelector('details')).toBeNull()
+    expect(screen.getByText(t('funding.shortfall'))).toBeInTheDocument()
+    expect(screen.queryByText(t('funding.showGoalChart'))).not.toBeInTheDocument()
+  })
+  it('shows the chart directly on the goal page without disclosure controls', () => {
+    const { container } = renderWithProviders(<GoalForecastDetails goal={goal} view="chart" />)
+    expect(screen.getByLabelText(t('funding.goalChart'))).toBeInTheDocument()
+    expect(container.querySelector('details')).toBeNull()
+    expect(screen.queryByText(t('funding.hideGoalChart'))).not.toBeInTheDocument()
+  })
+})

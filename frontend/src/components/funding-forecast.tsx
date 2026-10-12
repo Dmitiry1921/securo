@@ -23,13 +23,21 @@ function compactCurrency(value: number, currency: string, locale: string) {
 
 const selectClass = 'w-full rounded-lg border border-border bg-card px-3 py-2 text-sm'
 
-export function GoalForecastDetails({ goal, defaultOpen = false }: { goal: ForecastGoal; defaultOpen?: boolean }) {
+export function GoalForecastDetails({ goal, defaultOpen = false, view = 'disclosure' }: { goal: ForecastGoal; defaultOpen?: boolean; view?: 'summary' | 'chart' | 'disclosure' }) {
   const { t } = useTranslation()
   const locale = useDisplayLocale()
   const { mask } = usePrivacyMode()
   const [open, setOpen] = useState(defaultOpen)
   const value = (n: string | null) => n === null ? t('funding.unknown') : mask(formatCurrency(Number(n), goal.currency, locale))
   const dateLabel = (timestamp: number) => new Intl.DateTimeFormat(locale, { day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC' }).format(timestamp)
+  const heading = <>
+      <span className={`font-medium ${goal.status === 'shortfall' ? 'text-rose-500' : goal.status === 'funded' ? 'text-emerald-500' : 'text-muted-foreground'}`}>{t(`funding.${goal.status}`)}</span>
+      <span>{goal.deadline ?? t('funding.noDeadline')} · {value(goal.projected)} / {value(goal.target)}</span>
+      {view === 'disclosure' && <span className="inline-flex items-center gap-1 text-primary ml-auto"><ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />{t(open ? 'funding.hideGoalChart' : 'funding.showGoalChart')}</span>}
+  </>
+  if (view === 'summary') return <div className="mt-3 rounded-lg border border-border bg-card p-3 text-xs flex flex-wrap items-center gap-2">{heading}</div>
+  const expanded = view === 'chart' || open
+  const large = view === 'chart' || defaultOpen
   const points = goal.history.map(p => ({
     date: Date.parse(`${p.date}T00:00:00Z`),
     amount: p.amount === null ? null : Number(p.amount),
@@ -39,13 +47,8 @@ export function GoalForecastDetails({ goal, defaultOpen = false }: { goal: Forec
   const allocatedPoints = points.filter(p => p.allocated !== null).length
   const hasData = fundedPoints > 0 || allocatedPoints > 0
   const uncertain = points.some(p => p.amount === null)
-  return <details open={open} onToggle={e => setOpen(e.currentTarget.open)} className="mt-3 rounded-lg border border-border bg-card p-3 text-xs">
-    <summary className="cursor-pointer list-none flex flex-wrap items-center gap-2">
-      <span className={`font-medium ${goal.status === 'shortfall' ? 'text-rose-500' : goal.status === 'funded' ? 'text-emerald-500' : 'text-muted-foreground'}`}>{t(`funding.${goal.status}`)}</span>
-      <span>{goal.deadline ?? t('funding.noDeadline')} · {value(goal.projected)} / {value(goal.target)}</span>
-      <span className="inline-flex items-center gap-1 text-primary ml-auto"><ChevronDown aria-hidden="true" className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />{t(open ? 'funding.hideGoalChart' : 'funding.showGoalChart')}</span>
-    </summary>
-    {open && <>
+  const content = <>
+    {expanded && <>
       <div className="mt-3 grid grid-cols-2 gap-3">
         <p>{t('funding.shortfall')}: <strong>{value(goal.shortfall)}</strong></p>
         <p>{t('funding.achievedDate')}: <strong>{goal.achieved_date ?? '—'}</strong></p>
@@ -59,8 +62,8 @@ export function GoalForecastDetails({ goal, defaultOpen = false }: { goal: Forec
           {fundedPoints > 0 && <span className="inline-flex items-center gap-1"><span className="w-4 border-t-2 border-indigo-400" />{t('funding.goalBackedAmount')}</span>}
           <span className="inline-flex items-center gap-1"><span className="w-4 border-t border-dashed border-slate-400" />{t('goals.targetAmount')}</span>
         </div>
-        <div className={defaultOpen ? 'h-64 mt-3 min-w-0' : 'h-40 mt-3 min-w-0'} aria-label={t('funding.goalChart')}>
-          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: defaultOpen ? 256 : 160 }}>
+        <div className={large ? 'h-64 mt-3 min-w-0' : 'h-40 mt-3 min-w-0'} aria-label={t('funding.goalChart')}>
+          <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: large ? 256 : 160 }}>
             <LineChart data={points}>
               <XAxis dataKey="date" type="number" scale="time" domain={['dataMin', 'dataMax']} minTickGap={45} tick={{ fontSize: 10 }} tickFormatter={dateLabel} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={n => mask(compactCurrency(n, goal.currency, locale))} width={85} />
@@ -74,7 +77,9 @@ export function GoalForecastDetails({ goal, defaultOpen = false }: { goal: Forec
       </> : <p className="mt-3 rounded-lg bg-muted/30 p-4 text-muted-foreground" role="status">{t('funding.goalChartEmpty')}</p>}
       {!!goal.cycles.length && <ul className="mt-2 space-y-1">{goal.cycles.map(c => <li key={c.deadline}>{c.deadline}: {value(c.projected)} · {t('funding.shortfall')}: {value(c.shortfall)}</li>)}</ul>}
     </>}
-  </details>
+  </>
+  if (view === 'chart') return <section className="mt-3 rounded-lg border border-border bg-card p-3 text-xs"><div className="flex flex-wrap items-center gap-2">{heading}</div>{content}</section>
+  return <details open={open} onToggle={e => setOpen(e.currentTarget.open)} className="mt-3 rounded-lg border border-border bg-card p-3 text-xs"><summary className="cursor-pointer list-none flex flex-wrap items-center gap-2">{heading}</summary>{content}</details>
 }
 
 function RuleEditor({ rule, done }: { rule: ExpenseForecastRule | null; done: () => void }) {

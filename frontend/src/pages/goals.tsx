@@ -321,7 +321,7 @@ export default function GoalsPage() {
                         </span>
                       </div>
 
-                      {goalForecast.data?.goals.find(g => g.goal_id === goal.id) && <GoalForecastDetails goal={goalForecast.data.goals.find(g => g.goal_id === goal.id)!} />}
+                      {goalForecast.data?.goals.find(g => g.goal_id === goal.id) && <Link to={`/goals/${goal.id}`} className="block hover:text-primary focus-visible:outline focus-visible:outline-primary"><GoalForecastDetails goal={goalForecast.data.goals.find(g => g.goal_id === goal.id)!} view="summary" /></Link>}
                       {goalForecast.isError && <p className="text-xs text-amber-500 mt-2">{t('funding.loadError')}</p>}
 
                       {/* Details row */}
