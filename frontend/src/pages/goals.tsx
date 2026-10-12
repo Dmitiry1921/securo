@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
 import {
@@ -147,6 +148,7 @@ export default function GoalsPage() {
   const locale = useDisplayLocale()
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [chartId, setChartId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Goal | null>(null)
   const [cycleDialog, setCycleDialog] = useState<{ goal: Goal; historyOnly?: boolean } | null>(null)
   const [trackingType, setTrackingType] = useState('manual')
@@ -289,6 +291,7 @@ export default function GoalsPage() {
                     : 'bg-muted-foreground/30'
 
               const GoalIcon = getGoalIcon(goal.icon)
+              const projection = goalForecast.data?.goals.find(g => g.goal_id === goal.id)
               return (
                 <div key={goal.id} className="px-4 sm:px-5 py-4 hover:bg-muted/50 transition-colors">
                   <div className="flex flex-wrap sm:flex-nowrap items-start gap-4">
@@ -321,7 +324,20 @@ export default function GoalsPage() {
                         </span>
                       </div>
 
-                      {goalForecast.data?.goals.find(g => g.goal_id === goal.id) && <Link to={`/goals/${goal.id}`} className="block hover:text-primary focus-visible:outline focus-visible:outline-primary"><GoalForecastDetails goal={goalForecast.data.goals.find(g => g.goal_id === goal.id)!} view="summary" /></Link>}
+                      {projection && <div className="flex flex-wrap items-end gap-2 mb-2">
+                        <div className="flex-1 min-w-0 basis-full sm:basis-auto"><GoalForecastDetails goal={projection} view="summary" /></div>
+                        <Dialog open={chartId === goal.id} onOpenChange={open => setChartId(open ? goal.id : null)}>
+                          <DialogTrigger asChild><Button variant="ghost" size="sm" aria-label={`${t('funding.showGoalChart')}: ${goal.name}`}>{t('funding.showGoalChart')}</Button></DialogTrigger>
+                          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined} onOpenAutoFocus={event => {
+                              event.preventDefault()
+                              const closeButton = (event.target as HTMLElement).querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')
+                              closeButton?.focus()
+                            }}>
+                            <DialogHeader><DialogTitle>{goal.name}</DialogTitle></DialogHeader>
+                            <GoalForecastDetails goal={projection} view="chart" />
+                          </DialogContent>
+                        </Dialog>
+                      </div>}
                       {goalForecast.isError && <p className="text-xs text-amber-500 mt-2">{t('funding.loadError')}</p>}
 
                       {/* Details row */}

@@ -80,6 +80,8 @@ funded/shortfall/unknown status, the deadline result, or any account balance.
 Missing conversions and absent linked pockets remain unknown rather than zero.
 
 A chart with no valued amounts shows an explanation instead of empty axes.
-An isolated known amount has a visible marker. The goals list displays a compact forecast summary linking to the goal; it does
-not mount charts or accordions. The goal detail page displays exactly one chart
-directly. The family funding report can expand charts using the same component.
+An isolated known amount has a visible marker. The goals list displays a compact forecast summary and a separate "Show chart"
+button. The button opens a read-only dialog containing only that goal chart; closing
+it unmounts the chart and returns focus to the trigger. Goal names still link to
+the full detail page, which displays exactly one chart directly. The family funding
+report can expand charts using the same component.
