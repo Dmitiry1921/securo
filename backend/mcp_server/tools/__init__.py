@@ -4,6 +4,7 @@ shared registry on startup.
 from mcp_server.tools import (  # noqa: F401
     forecast,
     transactions,
+    transaction_updates,
     imports,
     transfers,
     transfer_matching,

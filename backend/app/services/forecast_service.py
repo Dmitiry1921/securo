@@ -589,6 +589,11 @@ def simulate(accounts, flows, goals, rates, start, end, *, scenario=None):
                 from_pocket_id=flow.from_pocket_id,
                 to_pocket_id=flow.to_pocket_id,
                 funded=str(amount),
+                funded_currency=currencies.get(source, flow.currency),
+                received_amount=str(flow.received_amount)
+                if flow.received_amount is not None
+                else None,
+                received_currency=flow.received_currency,
                 shortfall="0.00",
             )
             if source and source not in balances or dest and dest not in balances:
@@ -1100,6 +1105,19 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
     categories = (
         await session.scalars(select(Category).where(Category.workspace_id == workspace_id))
     ).all()
+    # A pocket-matched rule can use a budget amount without consuming that
+    # category's historical purchases. Its budget still funds ONE expense envelope.
+    for rule in rules:
+        if (
+            rule.enabled
+            and rule.mode == "budget"
+            and rule.budget_id
+            and rule.start_date <= end
+            and (not rule.end_date or rule.end_date >= start)
+        ):
+            source_budget = await session.get(Budget, rule.budget_id)
+            if source_budget:
+                covered_categories.add(str(source_budget.category_id))
     covered_names = {c.name for c in categories if str(c.id) in covered_categories}
     for gap in data.budget_gaps:
         if gap.category not in covered_names:

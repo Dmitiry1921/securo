@@ -1924,7 +1924,7 @@ export interface FundingForecast {
   rates: { currency: string; target: string; rate: string | null; date: string | null; source: string }[]
   opening_accounts: (PocketAccount & { name: string })[]
   timeline: { date: string; balance: string | null; free_funds: string | null; accounts: Record<string, string | null>; pockets: Record<string, string>; event_ids: string[] }[]
-  events: { id: string; date: string; kind: string; cash_role?: string; status: string; description: string; amount: string; currency: string; from_account_id: string | null; to_account_id: string | null; funded: string | null; shortfall: string | null }[]
+  events: { from_pocket_id?: string | null; to_pocket_id?: string | null; funded_currency?: string; received_amount?: string | null; received_currency?: string | null; id: string; date: string; kind: string; cash_role?: string; status: string; description: string; amount: string; currency: string; from_account_id: string | null; to_account_id: string | null; funded: string | null; shortfall: string | null }[]
   goals: ForecastGoal[]
   warnings: { code: string; date: string | null; account_id: string | null; goal_id: string | null; flow_id: string | null; amount: string | null; currency: string | null; detail: string }[]
   budget_periods: { rule_id: string; name: string; start: string; end: string; currency: string; target: string; actual: string; committed: string; forecast: string; exceeded: string }[]

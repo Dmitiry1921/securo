@@ -163,6 +163,7 @@ export function ProposalCard({ toolCallId, data }: Props) {
 }
 
 function kindTitle(kind: ProposalKind, t: ReturnType<typeof useTranslation>['t']): string {
+  if (kind === 'update_transaction') return `${t('common.edit')}: ${t('transactions.title')}`
   if (kind === 'forecast_setting') return t('funding.settings')
   if (kind === 'pocket') return t('pockets.title')
   if (kind === 'assign_pocket') return t('pockets.title')
@@ -179,6 +180,8 @@ function renderSummary(kind: ProposalKind, d: ProposalData, t: ReturnType<typeof
   const p = (d.proposed || {}) as Record<string, unknown>
   const tgt = (d.target || {}) as Record<string, unknown>
   switch (kind) {
+    case 'update_transaction':
+      return `${t('common.edit')}: ${String(tgt.description || tgt.id || '')} · ${Object.keys(p).join(', ')}`
     case 'forecast_setting':
       return `${t('funding.settings')}: ${String(p.name || tgt.id || '')}`
     case 'pocket':
@@ -476,6 +479,11 @@ async function applyProposal(data: ProposalData): Promise<string | void> {
       else if (operation === 'stop_income_rule') await pockets.stopIncomeRule(String(data.target?.id), String(p.end_date))
       else throw new Error('Unknown pocket operation')
       return String(p.account_id || data.target?.id || '')
+    }
+    case 'update_transaction': {
+      const id = String(data.target?.id)
+      await transactions.update(id, p as Parameters<typeof transactions.update>[1])
+      return id
     }
     case 'assign_pocket': {
       const id = String(data.target?.id)

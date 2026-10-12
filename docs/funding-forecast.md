@@ -38,3 +38,33 @@ MCP: `list_forecast_settings`, `get_funding_forecast`, `propose_forecast_setting
 ## Deployment
 
 Deploy backend, worker, beat, MCP server, and frontend from the same revision. Newly introduced controls are translated in English/Russian; other supported locales use English fallback strings, including previously missing planning keys. Run `alembic upgrade head` once before new APIs are used (the repository Compose backend command does this before starting Uvicorn). `f007` creates planning settings only; it does not alter transactions, balances, or existing allocation rules. Reload MCP tools after server update. Do not enable historical coverage claims or alter financial records merely to eliminate a warning.
+
+## Goal detail
+
+Click a goal name in Goals to open `/goals/:id`. The page reads the existing goal,
+shared family forecast, saved scenarios and native transfer schedules. It shows
+current savings, the target/deadline, the shared forecast chart, linked pockets,
+income allocation phases and future movements. Changing the horizon or scenario
+recalculates the same family plan; it does not create transactions or another
+independent goal balance. Transfers between two pockets of the same goal are
+labelled internal, including pairs with different settlement dates.
+
+A family account deficit stays visible even when the selected goal is conditionally
+funded. Unknown amounts, missing rates and deadlines outside the horizon remain
+unknown. Forecast shortfalls include their native source currency; cross-currency
+transfer rows also expose the expected recipient amount.
+
+## Reconcile a settled bank leg
+
+`propose_update_transaction` exposes native single-row PATCH for status, category,
+bank date and notes. It cannot change amounts or create an operation. Use preview
+first, and `expected_status` to guard an external reconciliation. Confirm settlement
+from the bank or account owner before posting a Pending row. For mixed-status
+transfer pairs, update only the outstanding leg; an already Posted counterpart is
+not replayed. Identical retries are safe. Workspace write permissions apply to
+preview and apply, and internal agent calls remain proposals for user review.
+
+A pocket-matched expense rule may use a category budget as its amount source.
+That source budget is covered by the forecast envelope, while unrelated historical
+purchases in the old category are still flagged for review rather than silently
+assigned to the pocket.

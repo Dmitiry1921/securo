@@ -12,6 +12,7 @@ export type ProposalKind =
   | 'create_rule'
   | 'update_rule'
   | 'delete_rule'
+  | 'update_transaction'
   | 'create_transaction'
   | 'create_recurring_transaction'
   | 'update_recurring_transaction'
@@ -42,7 +43,7 @@ export function isProposalData(data: unknown): data is ProposalData {
   return typeof k === 'string' && [
     'forecast_setting', 'categorize', 'create_category', 'create_budget', 'create_payee_rule',
     'create_rule', 'update_rule', 'delete_rule',
-    'create_transaction', 'create_recurring_transaction',
+    'update_transaction', 'create_transaction', 'create_recurring_transaction',
     'update_recurring_transaction', 'cancel_recurring_transaction',
     'create_goal', 'update_goal', 'complete_goal', 'restart_goal', 'pocket', 'assign_pocket', 'create_transfer', 'delete_transfer', 'update_pending_transfer',
   ].includes(k)

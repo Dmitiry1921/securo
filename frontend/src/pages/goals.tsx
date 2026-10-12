@@ -1,6 +1,7 @@
 import { GoalForecastDetails } from '@/components/funding-forecast'
 import { forecast } from '@/lib/api'
 import { GoalCycleDialog } from '@/components/goal-cycle-dialog'
+import { Link } from 'react-router-dom'
 import { createElement, useState } from 'react'
 import { getAccountName, sortAccountsByDisplayName } from '@/lib/account-utils'
 import { useTranslation } from 'react-i18next'
@@ -302,7 +303,7 @@ export default function GoalsPage() {
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-foreground truncate">{goal.name}</span>
+                        <Link to={`/goals/${goal.id}`} className="text-sm font-semibold text-foreground truncate hover:text-primary hover:underline focus-visible:underline">{goal.name}</Link>
                         <StatusBadge status={goal.status} t={t} />
                         {goal.status !== 'completed' && <OnTrackBadge status={goal.on_track} t={t} />}
                       </div>

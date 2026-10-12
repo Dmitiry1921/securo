@@ -842,3 +842,96 @@ async def test_expected_refund_is_cash_return_and_consumes_one_net_envelope():
     )
     assert t[-1]["balance"] == "0.00"
     assert events[0]["cash_role"] == "refund"
+
+
+def test_funding_event_uses_source_currency_and_preserves_receipt_amount():
+    f = flow(kind="expense", source="a", amount=1000000)
+    f.currency = "IDR"
+    t, events, _, _ = run(
+        [account("a", "100")], [f], rates={"USD": Decimal(1), "IDR": Decimal("0.0001")}
+    )
+    assert events[0]["amount"] == "1000000.00" and events[0]["currency"] == "IDR"
+    assert events[0]["funded"] == "100.00" and events[0]["funded_currency"] == "USD"
+    assert t[0]["balance"] == "0.00"
+    transfer = flow(
+        kind="transfer",
+        source="a",
+        dest="b",
+        amount=100,
+        received_amount=1000000,
+        received_currency="IDR",
+    )
+    timeline, events, _, _ = run(
+        [account("a", "100"), account("b", "0", currency="IDR")],
+        [transfer],
+        rates={"USD": Decimal(1), "IDR": Decimal("0.0001")},
+    )
+    assert Decimal(events[0]["received_amount"]) == 1000000
+    assert events[0]["received_currency"] == "IDR"
+    assert timeline[0]["accounts"]["b"] == "1000000.00"
+    assert timeline[0]["balance"] == "100.00"
+
+
+async def test_pocket_rule_covers_source_budget_without_guessing_purchase_category(
+    client, auth_headers
+):
+    from app.core.app_clock import app_today
+    from tests.test_pockets import setup_account
+
+    aid, pid = await setup_account(client, auth_headers)
+    today = app_today()
+    cat = await client.post(
+        "/api/categories",
+        headers=auth_headers,
+        json={"name": "Old household budget", "icon": "home", "color": "#F59E0B"},
+    )
+    assert cat.status_code == 201
+    cid = cat.json()["id"]
+    budget = await client.post(
+        "/api/budgets",
+        headers=auth_headers,
+        json={
+            "category_id": cid,
+            "amount": "100",
+            "currency": "USD",
+            "month": str(today.replace(day=1)),
+            "is_recurring": True,
+        },
+    )
+    assert budget.status_code == 201
+    rid = str(uuid.uuid4())
+    rule = await client.put(
+        f"/api/forecast/rules/{rid}",
+        headers=auth_headers,
+        json={
+            "id": rid,
+            "name": "Child pocket",
+            "account_id": aid,
+            "pocket_id": pid,
+            "budget_id": budget.json()["id"],
+            "currency": "USD",
+            "category_ids": [],
+            "start_date": str(today),
+        },
+    )
+    assert rule.status_code == 200
+    tx = await client.post(
+        "/api/transactions",
+        headers=auth_headers,
+        json={
+            "account_id": aid,
+            "description": "Historical detergent",
+            "amount": "10",
+            "currency": "USD",
+            "date": str(today),
+            "type": "debit",
+            "category_id": cid,
+        },
+    )
+    assert tx.status_code == 201
+    result = await client.post("/api/forecast/calculate", headers=auth_headers, json={"months": 1})
+    assert result.status_code == 200
+    data = result.json()
+    assert not any(w["code"] == "uncovered_budget" for w in data["warnings"])
+    assert any(w["code"] == "unmapped_actual_category" for w in data["warnings"])
+    assert Decimal(data["budget_periods"][0]["actual"]) == 0
