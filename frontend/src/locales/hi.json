@@ -3182,6 +3182,14 @@
     "incomeRuleBase": "The percentage is calculated from the full income amount, before allocations to other pockets. Money stays in the same account.",
     "allocateTo": "Allocate to pocket",
     "rulePeriod": "Active dates",
-    "ruleExample": "Example: {{income}} received → {{allocated}} allocated to this pocket"
+    "incomePlanHelp": "Each row links to a specific expected income. Contribution dates and amounts come from the shared family forecast. Expected income has not yet been received.",
+    "incomeReceipt": "Planned income",
+    "incomeAllocation": "Planned contribution: {{percentage}} → {{amount}}",
+    "incomeNotLinked": "Income not found in the forecast",
+    "noIncomeContributions": "No contributions from expected income in this period. Check the scenario and income dates.",
+    "rulesConfiguration": "Income allocation settings",
+    "transferPlans": "Transfer schedules",
+    "nextCycleFundingGap": "Next goal cycle due {{date}} has no planned contributions",
+    "nextCycleFundingGapHelp": "All linked income allocation rules end {{ruleEnd}}. The shared forecast has no contributions to this pocket before the next deadline."
   }
 }

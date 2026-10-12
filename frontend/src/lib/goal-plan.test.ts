@@ -36,3 +36,21 @@ describe('Goal resource selection', () => {
     expect(plan.linked).toEqual([])
   })
 })
+
+it('links contribution amounts to the exact source income and rule, never just to a date', () => {
+  const fixture = { ...data, events: [
+    { id: 'salary', kind: 'income', date: '2026-11-05', to_account_id: 'a', amount: '4908', currency: 'USD', description: 'Salary' },
+    { id: 'bonus', kind: 'income', date: '2026-11-05', to_account_id: 'a', amount: '2454', currency: 'USD', description: 'Bonus' },
+    { id: 'salary:rule:r', kind: 'allocation', from_account_id: 'a', to_pocket_id: 'p', amount: '1272.15', funded: '1200', shortfall: '72.15' },
+    { id: 'bonus:rule:r', kind: 'allocation', from_account_id: 'a', to_pocket_id: 'p', amount: '2208.60', funded: '2208.60', shortfall: '0' },
+    { id: 'missing:rule:r', kind: 'allocation', from_account_id: 'a', to_pocket_id: 'p', amount: '10' },
+    { id: 'manual', kind: 'allocation', to_pocket_id: 'p' },
+  ] } as unknown as FundingForecast
+  const result = goalPlan(fixture, 'g').contributions
+  expect(result.map(r => r.income?.id)).toEqual(['salary', 'bonus', undefined])
+  expect(result[0].event.amount).toBe('1272.15')
+  expect(result[0].event.shortfall).toBe('72.15')
+  expect(result[0].rule?.id).toBe('r')
+  expect(result[2].income).toBeUndefined()
+  expect(goalPlan({ ...fixture, events: [] }, 'g').contributions).toEqual([])
+})

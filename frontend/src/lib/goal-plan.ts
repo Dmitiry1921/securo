@@ -11,6 +11,16 @@ export function goalPlan(data: FundingForecast, goalId: string) {
   const incomeRules = data.opening_accounts.flatMap(account => (account.income_rules ?? [])
     .filter(rule => pocketIds.has(rule.pocket_id) && (!rule.end_date || rule.end_date >= data.start_date))
     .map(rule => ({ account, rule })))
+  // Native generated IDs retain exact income/rule provenance; never match by date or text.
+  const eventById = new Map(data.events.map(event => [event.id, event]))
+  const contributions = events.filter(event => event.kind === 'allocation' && event.id.includes(':rule:')).map(event => {
+    const marker = event.id.lastIndexOf(':rule:')
+    const candidate = eventById.get(event.id.slice(0, marker))
+    const income = candidate?.kind === 'income' && candidate.to_account_id === event.from_account_id ? candidate : undefined
+    const rule = incomeRules.find(({ account, rule }) => rule.id === event.id.slice(marker + 6)
+      && rule.pocket_id === event.to_pocket_id && account.account_id === event.from_account_id)?.rule
+    return { event, income, rule }
+  })
   const pairId = (id: string) => id.endsWith(':receipt') ? id.slice(0, -8) : id
   const internalPairs = new Set(events.filter(e => e.kind === 'transfer').map(e => pairId(e.id))
     .filter(id => {
@@ -22,5 +32,5 @@ export function goalPlan(data: FundingForecast, goalId: string) {
     const to = pocketIds.has(event.to_pocket_id ?? '')
     return from && to || internalPairs.has(pairId(event.id)) ? 'internal' : to ? 'inflow' : 'outflow'
   }
-  return { linked, pocketIds, events, incomeRules, direction }
+  return { linked, pocketIds, events, incomeRules, contributions, direction }
 }
