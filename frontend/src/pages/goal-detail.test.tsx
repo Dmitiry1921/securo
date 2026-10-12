@@ -45,3 +45,13 @@ describe('Goal detail page', () => {
     expect(screen.queryByText('$100.00')).not.toBeInTheDocument()
   })
 })
+
+
+it('explains income scope, gross percentage base and an example without assuming bonus-only rules', async () => {
+  render()
+  await screen.findByText('Income contribution')
+  expect(screen.getByText(t('goalDetail.incomeShare', { percentage: '10%', account: 'Source' }))).toBeInTheDocument()
+  expect(screen.getByText(t('goalDetail.incomeRuleScope'))).toBeInTheDocument()
+  expect(screen.getByText(t('goalDetail.incomeRuleBase'))).toBeInTheDocument()
+  expect(screen.getByText(t('goalDetail.ruleExample', { income: '$1,000.00', allocated: '$100.00' }))).toBeInTheDocument()
+})

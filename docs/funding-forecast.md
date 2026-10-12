@@ -85,3 +85,9 @@ button. The button opens a read-only dialog containing only that goal chart; clo
 it unmounts the chart and returns focus to the trigger. Goal names still link to
 the full detail page, which displays exactly one chart directly. The family funding
 report can expand charts using the same component.
+
+Contribution rule rows explain the income account, percentage of the full income,
+destination pocket, active dates and a sample allocation. The scope description
+reflects native income rules: confirmed income during the date range, including
+salary and bonuses, excluding own-account transfers. Date phases are not filters
+for bonuses. Expected income uses the same rule in the shared forecast.

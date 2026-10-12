@@ -3195,6 +3195,12 @@
     "noMovements": "No future movements are configured for this goal",
     "more": "Show more",
     "actual": "Currently saved",
-    "available": "Available"
+    "available": "Available",
+    "incomeShare": "{{percentage}} of each income received on {{account}}",
+    "incomeRuleScope": "This rule applies to every confirmed income on this account during its date range, including salary and bonuses. Transfers between your accounts are excluded. The forecast applies it to expected income.",
+    "incomeRuleBase": "The percentage is calculated from the full income amount, before allocations to other pockets. Money stays in the same account.",
+    "allocateTo": "Allocate to pocket",
+    "rulePeriod": "Active dates",
+    "ruleExample": "Example: {{income}} received → {{allocated}} allocated to this pocket"
   }
 }
