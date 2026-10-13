@@ -941,6 +941,8 @@
     "savingsRateCaption": "share of income saved this month",
     "spendingProjection": "At this pace, you'll spend {{amount}} by month end",
     "uncategorizedCta": "{{count}} transactions need categorizing",
+    "uncategorizedScope": "Across all dates · includes payments and receipts",
+    "uncategorizedAmountUnknown": "Total unavailable: some transactions have no currency conversion",
     "uncategorizedTotal": "{{amount}} in total",
     "categorizeNow": "Categorize now",
     "allCategorized": "All caught up!",

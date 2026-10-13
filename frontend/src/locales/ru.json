@@ -949,6 +949,8 @@
     "savingsRateCaption": "дохода в этом месяце сохранено",
     "spendingProjection": "Такими темпами вы потратите {{amount}} к концу месяца",
     "uncategorizedCta": "{{count}} транзакций нужно категоризировать",
+    "uncategorizedScope": "За всю историю · включая списания и поступления",
+    "uncategorizedAmountUnknown": "Сумма не определена: у части операций нет пересчёта валюты",
     "uncategorizedTotal": "На сумму {{amount}}",
     "categorizeNow": "Категоризировать сейчас",
     "allCategorized": "Всё в порядке!",

@@ -19,7 +19,7 @@ class DashboardSummary(BaseModel):
     projected_expenses_primary: float = 0.0
     accounts_count: int
     pending_categorization: int
-    pending_categorization_amount: float
+    pending_categorization_amount: float | None  # primary currency; None if FX is missing
     assets_value: dict[str, float] = Field(default_factory=dict)  # currency -> total asset value
     assets_value_primary: float = 0.0
     primary_currency: str = "USD"

@@ -710,7 +710,7 @@ export interface DashboardSummary {
   projected_expenses_primary?: number
   accounts_count: number
   pending_categorization: number
-  pending_categorization_amount: number
+  pending_categorization_amount: number | null
   assets_value: Record<string, number>
   assets_value_primary: number
   primary_currency: string

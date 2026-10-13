@@ -440,21 +440,28 @@ async def get_summary(
         Transaction.transfer_pair_id.is_(None),
         *acct_filter,
     ]
+    primary_currency = user.primary_currency if user else get_settings().default_currency
+    categorization_amount = case(
+        (Transaction.currency == primary_currency, Transaction.amount),
+        else_=Transaction.amount_primary,
+    )
     pending_categorization_result = await session.execute(
         select(
             func.count(),
-            func.coalesce(func.sum(func.abs(Transaction.amount)), 0),
+            func.coalesce(func.sum(func.abs(categorization_amount)), 0),
+            func.count() - func.count(categorization_amount),
         )
         .select_from(Transaction)
         .where(*pending_cat_filters)
     )
-    pending_categorization, pending_categorization_amount = (
+    pending_categorization, pending_categorization_amount, missing_categorization_amounts = (
         pending_categorization_result.one()
     )
-    pending_categorization_amount = abs(float(pending_categorization_amount or 0))
-
-    # Get user's primary currency (user already loaded above for reporting mode)
-    primary_currency = user.primary_currency if user else get_settings().default_currency
+    # This banner uses the reporting currency, just like the income/expense cards.
+    # A missing foreign conversion leaves the total unknown, never native-as-primary.
+    pending_categorization_amount = (
+        None if missing_categorization_amounts else abs(float(pending_categorization_amount or 0))
+    )
 
     # Asset values — use cutoff so past months show historical values. Under a
     # collection filter, include only assets in the collection's wallets

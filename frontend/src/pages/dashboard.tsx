@@ -439,7 +439,7 @@ export default function DashboardPage() {
 
   // Uncategorized data
   const uncategorizedCount = summary?.pending_categorization ?? 0
-  const uncategorizedAmount = summary?.pending_categorization_amount ?? 0
+  const uncategorizedAmount = summary?.pending_categorization_amount
 
   const [catSortDesc, setCatSortDesc] = useState(true)
 
@@ -870,7 +870,7 @@ export default function DashboardPage() {
         uncategorizedCount > 0 ? (
           <button
             type="button"
-            className="w-full flex items-center justify-between gap-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-4 py-2.5 mb-5 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
+            className="w-full flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-lg px-4 py-2.5 mb-5 cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-500/20 transition-colors"
             onClick={() => setDrillDown({
               title: t('dashboard.drillDownUncategorized'),
               uncategorized: true,
@@ -884,11 +884,11 @@ export default function DashboardPage() {
                 size={16}
                 className={`shrink-0 ${uncategorizedCount >= 20 ? 'text-amber-600 dark:text-amber-400' : 'text-amber-500 dark:text-amber-500'}`}
               />
-              <span className="text-sm text-amber-900 dark:text-amber-200 truncate">
+              <span className="text-sm text-amber-900 dark:text-amber-200 min-w-0">
                 {t('dashboard.uncategorizedCta', { count: uncategorizedCount })}
-                {uncategorizedAmount > 0 && (
-                  <span className="text-amber-700/70 dark:text-amber-300/70"> · {mask(formatCurrency(uncategorizedAmount, userCurrency, locale))}</span>
-                )}
+                {uncategorizedAmount == null ? <span className="text-amber-700/70 dark:text-amber-300/70"> · {t('dashboard.uncategorizedAmountUnknown')}</span>
+                  : uncategorizedAmount > 0 && <span className="text-amber-700/70 dark:text-amber-300/70"> · {mask(formatCurrency(uncategorizedAmount, primaryCurrency, locale))}</span>}
+                <span className="block text-xs text-amber-700/70 dark:text-amber-300/70 mt-0.5">{t('dashboard.uncategorizedScope')}</span>
               </span>
             </div>
             <span className="shrink-0 text-sm font-semibold text-amber-600 dark:text-amber-400 hover:underline">
