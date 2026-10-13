@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { goals as goalsApi, accounts as accountsApi, assets as assetsApi, assetGroups as assetGroupsApi, currencies as currenciesApi } from '@/lib/api'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { DatePickerInput } from '@/components/ui/date-picker-input'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -29,7 +30,7 @@ import {
 import type { Account, Asset, AssetGroup, Goal } from '@/types'
 import {
   Pencil, Trash2, Plus, Pause, Play, CheckCircle2, Archive, ArchiveRestore, Target,
-  ChevronDown, History,
+  ChevronDown, History, ChartNoAxesCombined,
 } from 'lucide-react'
 import { ICON_MAP } from '@/lib/category-icons'
 import { IconPicker } from '@/components/icon-picker'
@@ -324,20 +325,7 @@ export default function GoalsPage() {
                         </span>
                       </div>
 
-                      {projection && <div className="flex flex-wrap items-end gap-2 mb-2">
-                        {projection.status !== 'unknown' && <div className="flex-1 min-w-0 basis-full sm:basis-auto"><GoalForecastDetails goal={projection} view="summary" /></div>}
-                        <Dialog open={chartId === goal.id} onOpenChange={open => setChartId(open ? goal.id : null)}>
-                          <DialogTrigger asChild><Button variant="ghost" size="sm" className="ml-auto" aria-label={`${t('funding.showGoalChart')}: ${goal.name}`}>{t('funding.showGoalChart')}</Button></DialogTrigger>
-                          <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined} onOpenAutoFocus={event => {
-                              event.preventDefault()
-                              const closeButton = (event.target as HTMLElement).querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')
-                              closeButton?.focus()
-                            }}>
-                            <DialogHeader><DialogTitle>{goal.name}</DialogTitle></DialogHeader>
-                            <GoalForecastDetails goal={projection} view="chart" />
-                          </DialogContent>
-                        </Dialog>
-                      </div>}
+                      {projection && projection.status !== 'unknown' && <div className="mb-2"><GoalForecastDetails goal={projection} view="summary" /></div>}
                       {goalForecast.isError && <p className="text-xs text-amber-500 mt-2">{t('funding.loadError')}</p>}
 
                       {/* Details row */}
@@ -376,12 +364,31 @@ export default function GoalsPage() {
                       </div>
                     </div>
 
-                    <button className="ml-14 sm:ml-0 p-1.5 rounded-md text-muted-foreground hover:text-primary" onClick={() => setCycleDialog({ goal, historyOnly: true })} title={t('goals.cycles.history')}>
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-1 sm:shrink-0">
+                    {projection && <Dialog open={chartId === goal.id} onOpenChange={open => setChartId(open ? goal.id : null)}>
+                      <Tooltip>
+                        <TooltipTrigger asChild><DialogTrigger asChild>
+                          <Button variant="ghost" size="icon-xs" className="text-muted-foreground hover:text-primary" aria-label={`${t('funding.showGoalChart')}: ${goal.name}`}>
+                            <ChartNoAxesCombined className="size-3.5" aria-hidden="true" />
+                          </Button>
+                        </DialogTrigger></TooltipTrigger>
+                        <TooltipContent>{t('funding.showGoalChart')}</TooltipContent>
+                      </Tooltip>
+                      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined} onOpenAutoFocus={event => {
+                          event.preventDefault()
+                          const closeButton = (event.target as HTMLElement).querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')
+                          closeButton?.focus()
+                        }}>
+                        <DialogHeader><DialogTitle>{goal.name}</DialogTitle></DialogHeader>
+                        <GoalForecastDetails goal={projection} view="chart" />
+                      </DialogContent>
+                    </Dialog>}
+                    <button className="p-1.5 rounded-md text-muted-foreground hover:text-primary" onClick={() => setCycleDialog({ goal, historyOnly: true })} title={t('goals.cycles.history')}>
                       <History size={13} />
                     </button>
                     {/* Actions */}
                     {canWrite && (
-                      <div className="flex items-center gap-1 shrink-0">
+                      <>
                         {goal.status === 'active' && (
                           <button
                             className="p-1.5 rounded-md text-muted-foreground hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors"
@@ -441,8 +448,9 @@ export default function GoalsPage() {
                         >
                           <Trash2 size={13} />
                         </button>
-                      </div>
+                      </>
                     )}
+                    </div>
                   </div>
                 </div>
               )
