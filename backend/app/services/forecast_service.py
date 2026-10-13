@@ -178,6 +178,24 @@ def matches(rule, row):
     )
 
 
+def payment_pocket(rules, transaction):
+    """Use the configured payment route for a new recurring debit only."""
+    if transaction.pocket_id or transaction.type != "debit":
+        return transaction.pocket_id
+    candidates = {
+        rule.pocket_id
+        for rule in rules
+        if rule.enabled
+        and rule.mode == "payments_only"
+        and rule.pocket_id
+        and rule.currency == transaction.currency
+        and rule.start_date <= transaction.date
+        and (rule.end_date is None or transaction.date <= rule.end_date)
+        and matches(rule, transaction)
+    }
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
 async def expense_flows(
     session, workspace_id, rules, start, end, existing, rates, expense_multiplier=Decimal(1)
 ):
@@ -1259,6 +1277,7 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
         )
     event_by_id = {e["id"]: e for e in events}
     covered = {fid for period in periods for fid in period.get("committed_flow_ids", [])}
+    expense_rules = {str(rule.id): rule for rule in rules}
     display_currencies = sorted(set(rates) | {a.currency for a in accounts})
 
     def valuations(parts):
@@ -1298,6 +1317,7 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
         for period in periods:
             if period["start"][:7] != cursor.isoformat()[:7]:
                 continue
+            rule = expense_rules.get(period["rule_id"])
             amount = Decimal(period["target"]) + Decimal(period["exceeded"])
             costs.append(
                 dict(
@@ -1307,6 +1327,10 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
                     end=period["end"],
                     amount=str(amount),
                     currency=period["currency"],
+                    rule_id=period["rule_id"],
+                    budget_id=str(rule.budget_id) if rule and rule.budget_id else None,
+                    account_id=str(rule.account_id) if rule else None,
+                    pocket_id=str(rule.pocket_id) if rule and rule.pocket_id else None,
                     values=valuations([(amount, period["currency"])]),
                 )
             )
@@ -1318,6 +1342,8 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
                 date=event["date"],
                 amount=event["amount"],
                 currency=event["currency"],
+                account_id=event.get("from_account_id"),
+                pocket_id=pid,
                 values=valuations([(event["amount"], event["currency"])]),
             )
             if (

@@ -1,5 +1,9 @@
 {
   "monthlyPlan": {
+    "openBudget": "Open budgets",
+    "scheduledExpense": "Scheduled payment · paying account and pocket",
+    "budgetExpense": "Monthly budget · linked pockets",
+    "expensesHelp": "Everyday expense budgets and scheduled payments across all accounts. The items, periods and linked pockets below come from the current settings.",
     "title": "Monthly plan",
     "subtitle": "Across all accounts: income, expenses, goal contributions and money left after allocation",
     "completeMonths": "Complete future months after {{date}}. Current-month movements are in the dated forecast below.",
@@ -10,7 +14,7 @@
     "unavailable": "Monthly planning is unavailable. Update the backend to a version supporting this report.",
     "incomplete": "Some expenses or transfers need review. The remainder uses configured plans; detailed warnings are in the shared forecast below.",
     "legend": "Income allocation",
-    "living": "Living and obligations",
+    "living": "Planned expenses — total",
     "remaining": "Unassigned income",
     "remainingHelp": "Expected income minus expenses and goal contributions. This is a monthly projection; current account funds and dated shortfalls are shown in the shared forecast below.",
     "contributionsTotal": "Goal contributions",

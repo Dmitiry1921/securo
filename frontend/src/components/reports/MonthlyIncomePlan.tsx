@@ -8,7 +8,7 @@ import { formatCurrency } from '@/lib/format'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import type { FundingForecast } from '@/types'
+import type { FundingForecast, MonthlyPlanAmount } from '@/types'
 
 const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-4)', 'var(--chart-5)',
   'color-mix(in srgb, var(--chart-4) 70%, var(--chart-5))',
@@ -46,6 +46,23 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
   const monthName = (month: string) => new Date(`${month}-01T12:00:00Z`).toLocaleDateString(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' })
   const date = (on: string) => new Date(`${on}T12:00:00Z`).toLocaleDateString(locale, { day: 'numeric', month: 'short', timeZone: 'UTC' })
   const accountName = (id?: string | null) => data.opening_accounts.find(a => a.account_id === id)?.name ?? ''
+  const pockets = data.opening_accounts.flatMap(account => account.items.filter(p => !p.archived).map(p => ({ ...p, accountName: account.name })))
+  const expenseDetails = (costs: MonthlyPlanAmount[]) => <details className="mt-2">
+    <summary className="cursor-pointer text-xs text-primary">{t('monthlyPlan.expenseDetails')}</summary>
+    <p className="mt-2 text-xs text-muted-foreground">{t('monthlyPlan.expensesHelp')}</p>
+    <ul className="mt-3 space-y-3">{costs.map(cost => {
+      const pocket = pockets.find(p => p.id === cost.pocket_id)
+      const linked = cost.rule_id && pocket?.goal_id ? pockets.filter(p => p.goal_id === pocket.goal_id) : pocket ? [pocket] : []
+      return <li key={cost.id} className="text-xs">
+        <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-foreground"><span>{cost.name}</span><span className="tabular-nums">{value(cost.values[currency])}</span></div>
+        <p className="mt-1 text-muted-foreground">{cost.start && cost.end ? `${date(cost.start)} — ${date(cost.end)}` : cost.date ? date(cost.date) : ''}</p>
+        <p className="mt-1 text-muted-foreground">{t(cost.rule_id ? 'monthlyPlan.budgetExpense' : 'monthlyPlan.scheduledExpense')}</p>
+        {linked.length > 0 ? <ul className="mt-1 space-y-1">{linked.map(p => <li key={p.id}><Link to={`/accounts/${p.account_id}`} className="text-primary hover:underline">{p.accountName} · {p.name}</Link></li>)}</ul>
+          : cost.account_id && <Link to={`/accounts/${cost.account_id}`} className="mt-1 block text-primary hover:underline">{accountName(cost.account_id)}</Link>}
+        {cost.budget_id && <Link to="/budgets" className="mt-1 block text-primary hover:underline">{t('monthlyPlan.openBudget')}</Link>}
+      </li>
+    })}</ul>
+  </details>
   const savings = months[0]?.contributions ?? []
   const color = (id: string) => colors[Math.max(0, savings.findIndex(s => s.id === id)) % colors.length]
   const maximum = Math.max(1, ...months.flatMap(m => {
@@ -137,7 +154,7 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
               <dl className="text-sm space-y-2">
                 <div className="flex justify-between gap-3 font-medium"><dt>{t('monthlyPlan.income')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.income)}</dd></div>
                 {month.incomes.map(income => <div key={income.id} className="flex justify-between gap-3 text-xs text-muted-foreground"><dt>{date(income.date!)} · {income.name} · {accountName(income.account_id)}</dt><dd className="tabular-nums whitespace-nowrap">{value(income.amount, income.currency)}</dd></div>)}
-                <div className="flex justify-between gap-3 border-t border-border pt-2"><dt>{t('monthlyPlan.living')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.living)}</dd></div>
+                <div className="border-t border-border pt-2"><div className="flex justify-between gap-3"><dt>{t('monthlyPlan.living')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.living)}</dd></div>{expenseDetails(month.costs)}</div>
                 <div className="flex justify-between gap-3 font-medium"><dt>{t('monthlyPlan.contributionsTotal')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.contributions)}</dd></div>
                 {month.contributions.map(c => <div key={c.id} className="flex justify-between gap-3 text-xs text-muted-foreground"><dt>{c.name}</dt><dd className="tabular-nums whitespace-nowrap">{value(c.values[currency])}</dd></div>)}
                 <div className={`flex justify-between gap-3 border-t border-border pt-3 font-medium ${known && remainder < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}><dt>{t('monthlyPlan.remaining')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.remaining)}</dd></div>
@@ -163,7 +180,7 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
           <tbody className="block sm:table-row-group">
             <PlanRow name={t('monthlyPlan.living')} amount={value(totals.living)} source={<>
               <p>{t('monthlyPlan.livingSource')}</p>
-              <details className="mt-2"><summary className="cursor-pointer text-xs text-primary">{t('monthlyPlan.expenseDetails')}</summary><ul className="mt-2 space-y-2">{selected.costs.map(cost => <li key={cost.id} className="text-xs"><span className="text-foreground">{cost.name}: {value(cost.values[currency])}</span><span className="block">{cost.start && cost.end ? `${date(cost.start)} — ${date(cost.end)}` : cost.date ? date(cost.date) : ''}</span></li>)}</ul></details>
+              {expenseDetails(selected.costs)}
             </>} />
             {selected.contributions.map(c => <PlanRow key={c.id} name={c.goal_id ? <Link to={`/goals/${c.goal_id}`} className="hover:text-primary hover:underline">{c.name}</Link> : c.name} amount={value(c.values[currency])}
               source={c.sources.length ? <ul className="space-y-3">{c.sources.map(source => <li key={source.id}>

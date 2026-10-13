@@ -1936,6 +1936,7 @@ export interface FundingForecast {
 export interface MonthlyPlanAmount {
   id: string; name: string; amount: string; currency: string
   date?: string; start?: string; end?: string; account_id?: string | null
+  pocket_id?: string | null; rule_id?: string | null; budget_id?: string | null
   values: Record<string, string | null>
 }
 export interface MonthlyIncomePlan {

@@ -321,6 +321,9 @@ async def generate_pending(
     )
     recurring_list = list(result.scalars().all())
 
+    from app.services import forecast_service, pocket_service
+
+    payment_rules = {}
     count = 0
     for recurring in recurring_list:
         # Legacy rows may exist with a null account_id from before account_id
@@ -361,6 +364,7 @@ async def generate_pending(
                 is_synced_account = account is not None and account.connection_id is not None
                 transaction = Transaction(
                     user_id=user_id,
+                    workspace_id=recurring.workspace_id,
                     account_id=recurring.account_id,
                     category_id=recurring.category_id,
                     description=recurring.description,
@@ -372,6 +376,14 @@ async def generate_pending(
                     status="pending" if recurring.generation_status == "pending" or is_synced_account else "posted",
                     recurring_transaction_id=recurring.id,
                 )
+                if recurring.workspace_id not in payment_rules:
+                    payment_rules[recurring.workspace_id] = await forecast_service.list_settings(
+                        session, recurring.workspace_id, "expense_rule"
+                    )
+                transaction.pocket_id = forecast_service.payment_pocket(
+                    payment_rules[recurring.workspace_id], transaction
+                )
+                await pocket_service.validate_transaction(session, transaction)
                 apply_effective_date(transaction, account)
                 session.add(transaction)
                 await session.flush()

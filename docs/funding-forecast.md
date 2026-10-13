@@ -81,6 +81,26 @@ scrolls to the existing table and focuses its month selector. Escape restores
 focus to the month trigger. These interactions use the server result unchanged,
 including unknown valuations, negative remainders and privacy masks.
 
+**Planned expenses — total** is an aggregate across accounts, not a pocket.
+The same expandable expense breakdown appears in the month popover and table.
+Budget rows expose the native forecast rule, source budget, paying account and
+pocket IDs; scheduled payments expose their native paying account and pocket.
+The view resolves their names from the forecast's existing account/pocket snapshot.
+For a shared operating budget it shows all active pockets linked to the same goal,
+so a funding pocket and a weekly spending pocket remain visible together without
+charging that budget twice. Amounts continue to come from the native budget cycles
+and payment events. Monthly goal targets are funding milestones, not additional
+expenses. No family amounts, account names or expense categories are embedded in
+the report component.
+
+New recurring debit placeholders use the same enabled `payments_only` rules to
+choose their pocket. Matching respects the account, category, currency and rule
+dates; explicit assignments remain authoritative, and ambiguous routes remain
+unassigned. The existing pocket validator verifies ownership, native currency,
+active state and pocket start date before the placeholder is saved. The generator
+loads rules once per workspace and retains its existing status and occurrence
+deduplication. Generating Pending expenses never posts a payment.
+
 ## Goal detail
 
 Click a goal name in Goals to open `/goals/:id`. The page reads the existing goal,
