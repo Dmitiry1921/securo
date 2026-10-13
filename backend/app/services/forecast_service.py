@@ -187,6 +187,7 @@ def payment_pocket(rules, transaction):
         for rule in rules
         if rule.enabled
         and rule.mode == "payments_only"
+        and rule.account_id == transaction.account_id
         and rule.pocket_id
         and rule.currency == transaction.currency
         and rule.start_date <= transaction.date
