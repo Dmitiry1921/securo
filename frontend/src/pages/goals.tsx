@@ -325,9 +325,9 @@ export default function GoalsPage() {
                       </div>
 
                       {projection && <div className="flex flex-wrap items-end gap-2 mb-2">
-                        <div className="flex-1 min-w-0 basis-full sm:basis-auto"><GoalForecastDetails goal={projection} view="summary" /></div>
+                        {projection.status !== 'unknown' && <div className="flex-1 min-w-0 basis-full sm:basis-auto"><GoalForecastDetails goal={projection} view="summary" /></div>}
                         <Dialog open={chartId === goal.id} onOpenChange={open => setChartId(open ? goal.id : null)}>
-                          <DialogTrigger asChild><Button variant="ghost" size="sm" aria-label={`${t('funding.showGoalChart')}: ${goal.name}`}>{t('funding.showGoalChart')}</Button></DialogTrigger>
+                          <DialogTrigger asChild><Button variant="ghost" size="sm" className="ml-auto" aria-label={`${t('funding.showGoalChart')}: ${goal.name}`}>{t('funding.showGoalChart')}</Button></DialogTrigger>
                           <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined} onOpenAutoFocus={event => {
                               event.preventDefault()
                               const closeButton = (event.target as HTMLElement).querySelector<HTMLButtonElement>('[data-slot="dialog-close"]')
