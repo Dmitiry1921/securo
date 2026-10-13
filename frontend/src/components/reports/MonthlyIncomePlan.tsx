@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, Info, X } from 'lucide-react'
 import { useDisplayLocale } from '@/hooks/use-display-locale'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { formatCurrency } from '@/lib/format'
 import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import type { FundingForecast } from '@/types'
 
 const colors = ['var(--chart-1)', 'var(--chart-2)', 'var(--chart-4)', 'var(--chart-5)',
@@ -27,6 +29,8 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
   const { mask } = usePrivacyMode()
   const [chosenMonth, setChosenMonth] = useState('')
   const [chosenCurrency, setChosenCurrency] = useState('')
+  const [openMonth, setOpenMonth] = useState('')
+  const detailsRequested = useRef(false)
   const months = data.monthly_plan ?? []
   const currencies = Object.keys(months[0]?.totals ?? {})
   const nativeBudgetCurrency = data.budget_periods.reduce<Record<string, number>>((counts, p) => {
@@ -49,6 +53,20 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
     return [Number(totals?.income ?? 0), Number(totals?.requirements ?? 0)]
   })) * 1.03
   const width = (amount: number) => `${Math.max(0, amount) / maximum * 100}%`
+  const segment = (id: string, label: string, amount: string | null | undefined, background: string, offset?: number) => {
+    const quantity = Number(amount)
+    if (!(quantity > 0)) return null
+    return <Tooltip key={id}>
+      <TooltipTrigger asChild><span data-plan-segment={id} className="block h-full hover:brightness-125" style={{ width: width(quantity), background,
+        ...(offset === undefined ? {} : { position: 'absolute', top: 0, left: width(offset) }) }} /></TooltipTrigger>
+      <TooltipContent>{label}: <span className="tabular-nums">{value(amount)}</span></TooltipContent>
+    </Tooltip>
+  }
+  const showBreakdown = () => {
+    const target = document.getElementById('monthly-plan-breakdown')
+    target?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' })
+    target?.querySelector<HTMLSelectElement>('select')?.focus({ preventScroll: true })
+  }
   const firstDeficit = data.warnings.filter(w => w.date && ['account_deficit', 'protected_funds_required', 'unfunded_allocation'].includes(w.code))
     .sort((a, b) => a.date!.localeCompare(b.date!))[0]
   const incomplete = data.warnings.some(w => ['no_expense_rules', 'uncovered_budget', 'unclassified_actual', 'unmapped_actual_category', 'unpaired_transfers', 'missing_account', 'missing_pocket'].includes(w.code))
@@ -79,39 +97,63 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
         <span className="inline-flex items-center gap-1.5"><span className="h-3 border-l-2 border-foreground" />{t('monthlyPlan.incomeBoundary')}</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ background: 'repeating-linear-gradient(135deg, transparent 0 3px, var(--foreground) 3px 4px)' }} />{t('monthlyPlan.deficit')}</span>
       </div>
-      <div role="group" aria-label={t('monthlyPlan.chartLabel')} className="divide-y divide-border">
+      <p className="text-xs text-muted-foreground mb-3">{t('monthlyPlan.interactionHelp')}</p>
+      <TooltipProvider disableHoverableContent><div role="group" aria-label={t('monthlyPlan.chartLabel')} className="divide-y divide-border">
         {months.map(month => {
           const amounts = month.totals[currency]
           const known = amounts?.income != null && amounts?.requirements != null && amounts?.remaining != null
           const remainder = Number(amounts?.remaining ?? 0)
-          return <button key={month.month} type="button" aria-pressed={selected.month === month.month}
-            className={`w-full text-left py-3 px-2 rounded-md transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected.month === month.month ? 'bg-muted/30' : ''}`}
-            onClick={() => setChosenMonth(month.month)}>
+          return <Popover key={month.month} open={openMonth === month.month} onOpenChange={open => {
+            if (open) { setChosenMonth(month.month); setOpenMonth(month.month) }
+            else setOpenMonth(current => current === month.month ? '' : current)
+          }}><PopoverTrigger asChild><button type="button" aria-pressed={selected.month === month.month}
+            className={`w-full text-left py-3 px-2 rounded-md transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${selected.month === month.month ? 'bg-muted/30' : ''}`}>
             <span className="flex flex-wrap justify-between items-baseline gap-x-4 gap-y-1 text-sm mb-2">
-              <span className="font-medium capitalize">{monthName(month.month)}</span>
+              <span className="inline-flex items-center gap-2 font-medium capitalize">{monthName(month.month)}<Info className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /></span>
               <span className="text-xs text-muted-foreground">{t('monthlyPlan.income')}: <span className="tabular-nums">{value(amounts?.income)}</span></span>
             </span>
             {known && <span className="relative block h-5 mb-2" aria-hidden="true">
               <span className="flex h-full">
-                <span className="block bg-muted-foreground/60" style={{ width: width(Number(amounts.living)) }} />
-                {month.contributions.map(c => <span key={c.id} className="block" style={{ width: width(Number(c.values[currency])), background: color(c.id) }} />)}
-                {remainder > 0 && <span className="block" style={{ width: width(remainder), background: 'var(--chart-3)' }} />}
+                {segment('living', t('monthlyPlan.living'), amounts.living, 'color-mix(in srgb, var(--muted-foreground) 60%, transparent)')}
+                {month.contributions.map(c => segment(c.id, c.name, c.values[currency], color(c.id)))}
+                {remainder > 0 && segment('remaining', t('monthlyPlan.remaining'), amounts.remaining, 'var(--chart-3)')}
               </span>
               <span className="absolute top-[-3px] h-7 border-l-2 border-foreground" style={{ left: width(Number(amounts.income)) }} />
-              {remainder < 0 && <span className="absolute top-0 h-full" style={{ left: width(Number(amounts.income)), width: width(-remainder), background: 'repeating-linear-gradient(135deg, transparent 0 3px, var(--foreground) 3px 4px)' }} />}
+              {remainder < 0 && segment('deficit', t('monthlyPlan.deficit'), String(-remainder), 'repeating-linear-gradient(135deg, transparent 0 3px, var(--foreground) 3px 4px)', Number(amounts.income))}
             </span>}
             <span className={`block text-xs tabular-nums ${known && remainder < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-muted-foreground'}`}>
               {t(known && remainder < 0 ? 'monthlyPlan.deficit' : 'monthlyPlan.remaining')}: {value(amounts?.remaining == null ? null : String(Math.abs(remainder)))}
             </span>
-          </button>
+          </button></PopoverTrigger>
+            <PopoverContent aria-label={t('monthlyPlan.monthOverview', { month: monthName(month.month) })} align="start" collisionPadding={16}
+              className="w-[min(24rem,calc(100vw-2rem))] max-h-[min(44rem,var(--radix-popover-content-available-height),calc(100dvh-3rem))] overflow-y-auto select-text"
+              onCloseAutoFocus={event => {
+                if (detailsRequested.current) { event.preventDefault(); detailsRequested.current = false; showBreakdown() }
+              }}>
+              <div className="flex items-center justify-between gap-3 mb-3"><h3 className="font-medium capitalize">{monthName(month.month)}</h3>
+                <Button variant="ghost" size="icon" aria-label={t('common.close')} onClick={() => setOpenMonth('')}><X className="h-4 w-4" /></Button>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">{t('monthlyPlan.formula')}</p>
+              <dl className="text-sm space-y-2">
+                <div className="flex justify-between gap-3 font-medium"><dt>{t('monthlyPlan.income')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.income)}</dd></div>
+                {month.incomes.map(income => <div key={income.id} className="flex justify-between gap-3 text-xs text-muted-foreground"><dt>{date(income.date!)} · {income.name} · {accountName(income.account_id)}</dt><dd className="tabular-nums whitespace-nowrap">{value(income.amount, income.currency)}</dd></div>)}
+                <div className="flex justify-between gap-3 border-t border-border pt-2"><dt>{t('monthlyPlan.living')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.living)}</dd></div>
+                <div className="flex justify-between gap-3 font-medium"><dt>{t('monthlyPlan.contributionsTotal')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.contributions)}</dd></div>
+                {month.contributions.map(c => <div key={c.id} className="flex justify-between gap-3 text-xs text-muted-foreground"><dt>{c.name}</dt><dd className="tabular-nums whitespace-nowrap">{value(c.values[currency])}</dd></div>)}
+                <div className={`flex justify-between gap-3 border-t border-border pt-3 font-medium ${known && remainder < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}><dt>{t('monthlyPlan.remaining')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.remaining)}</dd></div>
+              </dl>
+              <p className="text-xs text-muted-foreground my-3">{t('monthlyPlan.remainingHelp')}</p>
+              <Button variant="outline" className="w-full" onClick={() => { detailsRequested.current = true; setChosenMonth(month.month); setOpenMonth('') }}>{t('monthlyPlan.openBreakdown')}</Button>
+            </PopoverContent>
+          </Popover>
         })}
-      </div>
+      </div></TooltipProvider>
       <p className="text-xs text-muted-foreground mt-3">{t('monthlyPlan.sharedScale', { currency })}</p>
       {firstDeficit && <div role="status" className="border-l-2 border-amber-500 pl-3 my-4 text-sm">
         <p className="flex gap-2 items-start"><AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />{t('monthlyPlan.datedDeficit', { date: date(firstDeficit.date!), account: accountName(firstDeficit.account_id) })}</p>
         <Button variant="link" className="h-auto p-0 mt-2" onClick={() => showDate(firstDeficit.date!)}>{t('monthlyPlan.explainDate')}</Button>
       </div>}
-      <div className="border-t border-border mt-5 pt-4">
+      <div id="monthly-plan-breakdown" className="border-t border-border mt-5 pt-4 scroll-mt-24">
         <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
           <label className="text-sm space-y-1"><span className="block font-medium">{t('monthlyPlan.breakdown')}</span><select aria-label={t('monthlyPlan.breakdown')} className={selectClass} value={selected.month} onChange={e => setChosenMonth(e.target.value)}>{months.map(m => <option key={m.month} value={m.month}>{monthName(m.month)}</option>)}</select></label>
           <span className="text-xs text-muted-foreground">{t('monthlyPlan.expected')}</span>
@@ -131,7 +173,7 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
                 {source.shortfall == null ? <p className="text-xs text-amber-600 dark:text-amber-400">{t('funding.unknown')}</p> : Number(source.shortfall) > 0 && <p className="text-xs text-rose-600 dark:text-rose-400">{t('funding.shortfall')}: {value(source.shortfall, source.currency)}</p>}
               </li>)}</ul> : t('monthlyPlan.noContribution')} />)}
             <PlanRow name={totals.remaining != null && Number(totals.remaining) < 0 ? t('monthlyPlan.deficit') : t('monthlyPlan.remaining')}
-              source={t('monthlyPlan.remainingSource')} amount={<span className={totals.remaining != null && Number(totals.remaining) < 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{value(totals.remaining)}</span>} />
+              source={<><p>{t('monthlyPlan.remainingSource')}</p><p className="text-xs mt-1">{t('monthlyPlan.remainingHelp')}</p></>} amount={<span className={totals.remaining != null && Number(totals.remaining) < 0 ? 'text-rose-600 dark:text-rose-400' : ''}>{value(totals.remaining)}</span>} />
           </tbody>
         </table>
         {selected.saved_payments.length > 0 && <details className="border-t border-border pt-3 mt-3 text-sm"><summary className="cursor-pointer font-medium">{t('monthlyPlan.savedPayments')}: {value(totals.saved_payments)}</summary><p className="text-xs text-muted-foreground mt-2">{t('monthlyPlan.savedPaymentsHelp')}</p><ul className="text-xs space-y-2 mt-3">{selected.saved_payments.map(p => <li key={p.id}>{date(p.date!)} · {p.name} · {value(p.values[currency])}</li>)}</ul></details>}

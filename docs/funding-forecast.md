@@ -71,6 +71,16 @@ expense coverage stay visible, with a link to the existing dated calculation.
 The view supports native reporting currencies without changing user preferences,
 budgets, income rules or any ledger rows.
 
+The remainder is labelled **Unassigned income** (Russian: **Остаток дохода**),
+meaning expected receipts less configured expenses and saving allocations.
+Hovering over a colored segment reveals its amount in the report currency. Clicking a
+month, or pressing Enter on it, opens the existing popover component with receipt
+sources, expense and contribution totals, destination amounts and the remainder.
+The values can be selected as text. Its full-breakdown action selects that month,
+scrolls to the existing table and focuses its month selector. Escape restores
+focus to the month trigger. These interactions use the server result unchanged,
+including unknown valuations, negative remainders and privacy masks.
+
 ## Goal detail
 
 Click a goal name in Goals to open `/goals/:id`. The page reads the existing goal,
