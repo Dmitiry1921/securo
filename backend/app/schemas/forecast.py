@@ -75,6 +75,7 @@ class ForecastScenario(BaseModel):
 class ForecastRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     months: int = Field(default=12, ge=1, le=24)
+    full_months: bool = False
     end_date: Date | None = None
     scenario_id: uuid.UUID | None = None
     scenario: ForecastScenario | None = None
@@ -127,6 +128,7 @@ class FundingForecast(BaseModel):
     warnings: list[ForecastWarning]
     budget_periods: list[dict]
     history_recommendations: list[dict] = Field(default_factory=list)
+    monthly_plan: list[dict] = Field(default_factory=list)
     # Both numbers are unknown if any required currency is unvalued.
     ending_balance: Decimal | None
     free_funds: Decimal | None

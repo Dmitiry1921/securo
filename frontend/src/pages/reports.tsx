@@ -29,6 +29,7 @@ import { DateRangePicker } from '@/components/ui/date-range-picker'
 import { PageHeader } from '@/components/page-header'
 import { CashflowSankey } from '@/components/reports/CashflowSankey'
 import { AccountMoneyMap } from '@/components/reports/AccountMoneyMap'
+import { MonthlyIncomePlan } from '@/components/reports/MonthlyIncomePlan'
 import { usePrivacyMode } from '@/hooks/use-privacy-mode'
 import { useAuth } from '@/contexts/auth-context'
 import { useCollectionFilter } from '@/contexts/collection-filter-context'
@@ -791,6 +792,8 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
+
+      {isCashFlow && data?.funding && <MonthlyIncomePlan data={data.funding} onSelectDate={setSelectedDate} />}
 
       {!isMoneyMap && (!data?.funding || data.funding.ending_balance !== null) && (
       <>

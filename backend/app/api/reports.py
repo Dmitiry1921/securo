@@ -175,6 +175,7 @@ async def get_cash_flow(
     interval: str = Query("daily", pattern="^(daily|weekly|monthly)$"),
     baseline: bool = Query(False),
     funding: bool = Query(False),
+    full_months: bool = Query(False),
     scenario_id: uuid.UUID | None = None,
     account_ids: Optional[list[uuid.UUID]] = Query(None),
     ctx: WorkspaceContext = Depends(current_workspace),
@@ -185,7 +186,7 @@ async def get_cash_flow(
         from app.services.forecast_service import as_cash_flow_report
         try:
             return await as_cash_flow_report(session, ctx.id, ctx.user_id,
-                ForecastRequest(months=months, scenario_id=scenario_id, account_ids=account_ids),interval=interval)
+                ForecastRequest(months=months, full_months=full_months, scenario_id=scenario_id, account_ids=account_ids),interval=interval)
         except ValueError as error:
             raise HTTPException(422, detail=str(error)) from error
     return await report_service.get_cash_flow_report(

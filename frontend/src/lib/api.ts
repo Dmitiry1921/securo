@@ -1556,7 +1556,7 @@ export const reports = {
   },
   cashFlow: async (months = 6, interval = 'daily', baseline = false, accountIds?: string[], funding = false, scenarioId?: string): Promise<ReportResponse> => {
     const extra = acctIdsParam(accountIds)
-    const { data } = await api.get('/reports/cash-flow', { params: { months, interval, baseline, funding, scenario_id: scenarioId, ...(extra.params ?? {}) }, ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}) })
+    const { data } = await api.get('/reports/cash-flow', { params: { months, interval, baseline, funding, full_months: funding, scenario_id: scenarioId, ...(extra.params ?? {}) }, ...(extra.paramsSerializer ? { paramsSerializer: extra.paramsSerializer } : {}) })
     return data
   },
 }

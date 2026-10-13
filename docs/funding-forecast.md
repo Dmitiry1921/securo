@@ -39,6 +39,38 @@ MCP: `list_forecast_settings`, `get_funding_forecast`, `propose_forecast_setting
 
 Deploy backend, worker, beat, MCP server, and frontend from the same revision. Newly introduced controls are translated in English/Russian; other supported locales use English fallback strings, including previously missing planning keys. Run `alembic upgrade head` once before new APIs are used (the repository Compose backend command does this before starting Uvicorn). `f007` creates planning settings only; it does not alter transactions, balances, or existing allocation rules. Reload MCP tools after server update. Do not enable historical coverage claims or alter financial records merely to eliminate a warning.
 
+## Monthly income plan
+
+Reports → Cash Flow in funding mode includes a monthly income allocation view.
+The report requests `full_months=true`, extending its horizon to the end of the
+last forecast month. The incomplete current month remains in the dated cash
+forecast. Saved scenarios and rates are shared with that forecast.
+
+`FundingForecast.monthly_plan` is a read-only aggregation on the backend using
+Decimal amounts across all workspace accounts, even when the dated account
+chart is filtered to a collection. Full expense budget cycles are attributed to their starting
+month; their actual start/end dates are visible in the expense breakdown.
+Covered Pending and recurring expenses consume their envelope once. Ordinary
+expenses outside those envelopes remain visible. Own transfers are not external
+income or spending.
+
+The contribution rows use existing pocket allocations. Native generated IDs
+retain the exact income receipt and percentage rule; the report shows receipt
+date, description, account, gross income, percentage and contribution amount.
+Operating pockets tied to expense envelopes are excluded from saving allocations
+to avoid charging the same budget twice. Pockets linked to a saving goal are
+grouped together; unlinked saving envelopes remain visible with zero when no
+contribution is scheduled.
+
+Payments from those saving pockets are listed separately rather than charged
+again to monthly income. Their funding and settlement remain in the dated shared
+forecast. Monthly remainder is expected income minus planned operating expenses
+and saving allocations, not a second account balance or a guarantee of goal
+funding. Missing rates propagate as unknown. Account deficits and incomplete
+expense coverage stay visible, with a link to the existing dated calculation.
+The view supports native reporting currencies without changing user preferences,
+budgets, income rules or any ledger rows.
+
 ## Goal detail
 
 Click a goal name in Goals to open `/goals/:id`. The page reads the existing goal,

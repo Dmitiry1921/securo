@@ -279,6 +279,7 @@ async def expense_flows(
                     elif rule.credit_kind in ("refund", "reimbursement"):
                         spent -= tx.amount
             committed = Decimal(0)
+            committed_flow_ids = []
             for flow in existing:
                 if not cursor <= date.fromisoformat(flow.date) < following:
                     continue
@@ -299,6 +300,7 @@ async def expense_flows(
                     else pocket_id == str(rule.pocket_id)
                 )
                 if matched and flow.currency == rule.currency:
+                    committed_flow_ids.append(flow.id)
                     committed += money(flow.amount) * (-1 if returned else 1)
                     if rule.pocket_id and not pocket_id and account_id == str(rule.account_id):
                         if returned:
@@ -317,6 +319,7 @@ async def expense_flows(
                     target=str(target),
                     actual=str(spent),
                     committed=str(committed),
+                    committed_flow_ids=committed_flow_ids,
                     forecast=str(remaining),
                     exceeded=str(excess),
                 )
@@ -900,6 +903,8 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
     assert data is not None
     start = date.fromisoformat(data.start_date)
     end = request.end_date or date.fromisoformat(data.end_date)
+    if request.full_months and request.end_date is None:
+        end = end.replace(day=calendar.monthrange(end.year, end.month)[1])
     if end < start or end > _advance_months(start, 24, start.day):
         raise ValueError("Forecast horizon must be within 24 months from today")
     # Request all routes once through the existing projection deduplication.
@@ -1183,6 +1188,9 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
         warnings=warnings,
         budget_periods=periods,
         history_recommendations=await history_recommendations(session, workspace_id, rules, start),
+        monthly_plan=monthly_income_plan(
+            accounts, events, periods, rules, rates, start, end, goals=goals
+        ),
         ending_balance=Decimal(timeline[-1]["balance"])
         if timeline[-1]["balance"] is not None
         else None,
@@ -1190,6 +1198,215 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
         if timeline[-1]["free_funds"] is not None
         else None,
     )
+
+
+def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, goals=()):
+    """Income envelopes for complete future months, using the shared plan's inputs.
+
+    Full budget cycles are attributed to their start month. This is an income
+    allocation view, not another bank balance or proof of dated funding.
+    """
+    pockets = {str(p.id): p for account in accounts for p in account.items}
+    operating = {
+        str(r.pocket_id)
+        for r in rules
+        if r.enabled
+        and r.mode == "budget"
+        and r.pocket_id
+        and r.start_date <= end
+        and (r.end_date is None or r.end_date >= start)
+    }
+    operating_goals = {
+        str(pockets[pid].goal_id) for pid in operating if pid in pockets and pockets[pid].goal_id
+    }
+    income_rules = {
+        str(r.id): r
+        for account in accounts
+        for r in account.income_rules
+        if r.end_date is None or r.end_date >= start
+    }
+    saving_ids = {
+        str(r.pocket_id)
+        for r in income_rules.values()
+        if str(r.pocket_id) in pockets
+        and str(r.pocket_id) not in operating
+        and str(pockets[str(r.pocket_id)].goal_id) not in operating_goals
+    }
+    saving_goals = {str(pockets[pid].goal_id) for pid in saving_ids if pockets[pid].goal_id}
+    saving_ids.update(
+        pid for pid, p in pockets.items() if p.goal_id and str(p.goal_id) in saving_goals
+    )
+    # Keep unlinked saving envelopes visible even without a scheduled deposit.
+    saving_ids.update(
+        pid
+        for pid, p in pockets.items()
+        if not p.goal_id and pid not in operating and not p.archived
+    )
+    goal_names = {g.goal_id: g.name for g in goals}
+    destinations = {}
+    pocket_keys = {}
+    for pid in sorted(saving_ids):
+        pocket = pockets[pid]
+        key = f"goal:{pocket.goal_id}" if pocket.goal_id else f"pocket:{pid}"
+        pocket_keys[pid] = key
+        destinations.setdefault(
+            key,
+            dict(
+                id=key,
+                name=goal_names.get(str(pocket.goal_id), pocket.name),
+                goal_id=str(pocket.goal_id) if pocket.goal_id else None,
+            ),
+        )
+    event_by_id = {e["id"]: e for e in events}
+    covered = {fid for period in periods for fid in period.get("committed_flow_ids", [])}
+    display_currencies = sorted(set(rates) | {a.currency for a in accounts})
+
+    def valuations(parts):
+        values = {}
+        for currency in display_currencies:
+            total = Decimal(0)
+            for amount, native in parts:
+                amount = Decimal(str(amount))
+                if not amount or native == currency:
+                    total += amount
+                elif rates.get(native) is None or rates.get(currency) is None:
+                    values[currency] = None
+                    break
+                else:
+                    total += amount * rates[native] / rates[currency]
+            else:
+                values[currency] = str(money(total))
+        return values
+
+    def total(rows, currency):
+        values = [row["values"].get(currency) for row in rows]
+        return (
+            money(sum((Decimal(v) for v in values if v is not None), Decimal(0)))
+            if all(v is not None for v in values)
+            else None
+        )
+
+    result = []
+    cursor = _advance_months(start.replace(day=1), 1, 1)
+    while cursor <= end:
+        last = cursor.replace(day=calendar.monthrange(cursor.year, cursor.month)[1])
+        if last > end:
+            break
+        month_events = [e for e in events if cursor.isoformat() <= e["date"] <= last.isoformat()]
+        incomes, costs, payments = [], [], []
+        contributions = {key: {**item, "sources": []} for key, item in destinations.items()}
+        for period in periods:
+            if period["start"][:7] != cursor.isoformat()[:7]:
+                continue
+            amount = Decimal(period["target"]) + Decimal(period["exceeded"])
+            costs.append(
+                dict(
+                    id=f"budget:{period['rule_id']}:{period['start']}",
+                    name=period["name"],
+                    start=period["start"],
+                    end=period["end"],
+                    amount=str(amount),
+                    currency=period["currency"],
+                    values=valuations([(amount, period["currency"])]),
+                )
+            )
+        for event in month_events:
+            kind, pid = event["kind"], event.get("from_pocket_id")
+            item = dict(
+                id=event["id"],
+                name=event["description"],
+                date=event["date"],
+                amount=event["amount"],
+                currency=event["currency"],
+                values=valuations([(event["amount"], event["currency"])]),
+            )
+            if (
+                kind == "income"
+                and event.get("cash_role", "income") == "income"
+                and not event["from_account_id"]
+            ):
+                incomes.append({**item, "account_id": event["to_account_id"]})
+            elif (
+                kind == "allocation"
+                and event.get("to_pocket_id") in pocket_keys
+                and pid not in saving_ids
+            ):
+                marker = event["id"].rfind(":rule:")
+                income = event_by_id.get(event["id"][:marker]) if marker >= 0 else None
+                rule = income_rules.get(event["id"][marker + 6 :]) if marker >= 0 else None
+                if not (
+                    income
+                    and income["kind"] == "income"
+                    and income["to_account_id"] == event["from_account_id"]
+                ):
+                    income = None
+                if rule and str(rule.pocket_id) != event.get("to_pocket_id"):
+                    rule = None
+                contributions[pocket_keys[event["to_pocket_id"]]]["sources"].append(
+                    {
+                        **item,
+                        "income_id": income["id"] if income else None,
+                        "income_name": income["description"] if income else None,
+                        "income_amount": income["amount"] if income else None,
+                        "income_currency": income["currency"] if income else None,
+                        "account_id": event["from_account_id"],
+                        "pocket_id": event["to_pocket_id"],
+                        "percentage": str(rule.percentage) if rule else None,
+                        "funded": event.get("funded"),
+                        "shortfall": event.get("shortfall"),
+                    }
+                )
+            elif (
+                kind == "expense"
+                or kind == "investment"
+                and event["from_account_id"]
+                and not event["to_account_id"]
+            ):
+                if pid in saving_ids:
+                    payments.append(item)
+                elif event["id"] not in covered and not event["id"].startswith("budget:"):
+                    costs.append(item)
+        contribution_rows = list(contributions.values())
+        for row in contribution_rows:
+            row["values"] = valuations([(s["amount"], s["currency"]) for s in row["sources"]])
+        totals = {}
+        for currency in display_currencies:
+            income, living, saved, payments_total = (
+                total(rows, currency) for rows in [incomes, costs, contribution_rows, payments]
+            )
+            requirements = (
+                money(living + saved) if living is not None and saved is not None else None
+            )
+            remaining = (
+                money(income - requirements)
+                if income is not None and requirements is not None
+                else None
+            )
+            totals[currency] = {
+                key: str(value) if value is not None else None
+                for key, value in dict(
+                    income=income,
+                    living=living,
+                    contributions=saved,
+                    requirements=requirements,
+                    remaining=remaining,
+                    saved_payments=payments_total,
+                ).items()
+            }
+        result.append(
+            dict(
+                month=cursor.isoformat()[:7],
+                start=cursor.isoformat(),
+                end=last.isoformat(),
+                incomes=incomes,
+                costs=costs,
+                contributions=contribution_rows,
+                saved_payments=payments,
+                totals=totals,
+            )
+        )
+        cursor = _advance_months(cursor, 1, 1)
+    return result
 
 
 async def history_recommendations(session, workspace_id, rules, today):

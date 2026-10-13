@@ -1930,4 +1930,26 @@ export interface FundingForecast {
   budget_periods: { rule_id: string; name: string; start: string; end: string; currency: string; target: string; actual: string; committed: string; forecast: string; exceeded: string }[]
   history_recommendations: { rule_id: string; status: string; reason: string; currency?: string; median?: string; minimum?: string; maximum?: string }[]
   ending_balance: string | null; free_funds: string | null
+  monthly_plan?: MonthlyIncomePlan[]
+}
+
+export interface MonthlyPlanAmount {
+  id: string; name: string; amount: string; currency: string
+  date?: string; start?: string; end?: string; account_id?: string | null
+  values: Record<string, string | null>
+}
+export interface MonthlyIncomePlan {
+  month: string; start: string; end: string
+  incomes: MonthlyPlanAmount[]; costs: MonthlyPlanAmount[]; saved_payments: MonthlyPlanAmount[]
+  contributions: {
+    id: string; name: string; goal_id: string | null; values: Record<string, string | null>
+    sources: (MonthlyPlanAmount & {
+      income_id: string | null; income_name: string | null; income_amount: string | null; income_currency: string | null
+      account_id: string | null; pocket_id: string; percentage: string | null; funded: string | null; shortfall: string | null
+    })[]
+  }[]
+  totals: Record<string, {
+    income: string | null; living: string | null; contributions: string | null; requirements: string | null
+    remaining: string | null; saved_payments: string | null
+  }>
 }
