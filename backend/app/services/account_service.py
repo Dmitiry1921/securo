@@ -307,6 +307,12 @@ async def update_account(
         return None
 
     update_data = data.model_dump(exclude_unset=True)
+    if (
+        update_data.get("type", account.type) == "loan"
+        and update_data.get("balance") is not None
+        and update_data["balance"] > 0
+    ):
+        raise ValueError("Loan balance must be zero or negative (outstanding debt)")
     if "type" in update_data and update_data["type"] not in ("checking", "savings", "wallet"):
         from app.models.pocket import Pocket
         if await session.scalar(select(Pocket.id).where(Pocket.account_id == account_id).limit(1)):

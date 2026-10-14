@@ -1257,6 +1257,8 @@
     "typeChecking": "Checking",
     "typeSavings": "Savings",
     "typeCreditCard": "Credit Card",
+    "typeLoan": "Loan",
+    "balanceLoanHint": "Enter outstanding debt as a negative balance. Record repayments as transfers into this account and interest as separate expenses.",
     "typeInvestment": "Investment",
     "typeWallet": "Wallet",
     "creditLimit": "Credit limit",
@@ -3150,7 +3152,7 @@
       "unclassified_actual": "Some purchases are uncategorized and have not reduced this budget forecast",
       "overdue_pending": "Past-due Pending: treated as due now; check whether it was already paid",
       "pocket_top_up_required": "Top up this pocket from the account’s available unallocated money before payment",
-      "credit_liability": "Projected credit-card liability (not a cash-account overdraft)",
+      "credit_liability": "Projected loan or credit-card debt (not a cash-account overdraft)",
       "unmapped_actual_category": "This purchase does not consume any forecast budget. Review the rule categories and accounts."
     },
     "historyCoverage": "Historical coverage",

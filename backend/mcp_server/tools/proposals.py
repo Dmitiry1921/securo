@@ -100,7 +100,7 @@ _ACCOUNT_CREATE_PROPERTIES = {
     "name": {"type": "string", "minLength": 1},
     "account_type": {
         "type": "string",
-        "enum": ["checking", "savings", "credit_card", "investment", "wallet"],
+        "enum": ["checking", "savings", "credit_card", "investment", "wallet", "loan"],
     },
     "balance": {"type": "number", "default": 0},
     "currency": {"type": "string", "default": "USD"},
@@ -119,7 +119,8 @@ _ACCOUNT_CREATE_PROPERTIES = {
     description=_PROPOSAL_PREFACE
     + (
         "Preview creation of a manual account. Supported types are checking, "
-        "savings, credit_card, investment, and wallet. The balance is the "
+        "savings, credit_card, investment, wallet, and loan. For loans, enter "
+        "the outstanding debt as a negative balance. The balance is the "
         "opening balance; for credit cards, enter the amount owed as a "
         "positive number."
     ),
@@ -158,12 +159,15 @@ async def propose_create_account(
         "credit_card",
         "investment",
         "wallet",
+        "loan",
     }:
         return {"error": "unsupported account type"}
     if not name.strip():
         return {"error": "account name is required"}
 
     opening_balance = Decimal(str(balance))
+    if account_type == "loan" and opening_balance > 0:
+        return {"error": "loan balance must be zero or negative (outstanding debt)"}
     opening_date = parse_date(balance_date) if balance_date else None
     if balance_date and opening_date is None:
         return {"error": "invalid balance_date"}

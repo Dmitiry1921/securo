@@ -535,7 +535,10 @@ def simulate(accounts, flows, goals, rates, start, end, *, scenario=None):
     # Split settlement dates; funds in transit remain part of family wealth once.
     expanded = []
     for flow in flows:
-        if flow.kind == "transfer" and flow.received_date and flow.received_date != flow.date:
+        if flow.kind == "transfer" and flow.received_date and (
+            flow.received_date != flow.date
+            or (flow.received_status or flow.status) != flow.status
+        ):
             receipt = flow.model_copy(
                 update=dict(
                     id=flow.id + ":receipt",
@@ -794,7 +797,7 @@ def simulate(accounts, flows, goals, rates, start, end, *, scenario=None):
                 warnings.append(
                     ForecastWarning(
                         code="credit_liability"
-                        if types[aid] == "credit_card"
+                        if types[aid] in {"credit_card", "loan"}
                         else "account_deficit",
                         date=on,
                         account_id=aid,
@@ -990,13 +993,13 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
         for f in data.flows
         if f.status != "posted"
         or f.kind == "transfer"
-        and f.received_status != "posted"
+        and (f.received_status or f.status) != "posted"
         and f.received_date
-        and date.fromisoformat(f.received_date) >= start
     ]
     overdue = []
     for flow in flows:
-        if flow.status == "pending" and date.fromisoformat(flow.date) < start:
+        debit_overdue = flow.status == "pending" and date.fromisoformat(flow.date) < start
+        if debit_overdue:
             overdue.append(
                 ForecastWarning(
                     code="overdue_pending",
@@ -1007,6 +1010,24 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
                 )
             )
             flow.date = start.isoformat()
+        if (
+            flow.kind == "transfer"
+            and (flow.received_status or flow.status) == "pending"
+            and flow.received_date
+            and date.fromisoformat(flow.received_date) < start
+        ):
+            # Each unsettled leg is due now; posted legs stay in opening balances.
+            if not debit_overdue:
+                overdue.append(
+                    ForecastWarning(
+                        code="overdue_pending",
+                        date=date.fromisoformat(flow.received_date),
+                        account_id=flow.to_account_id,
+                        flow_id=flow.id,
+                        detail=flow.description,
+                    )
+                )
+            flow.received_date = start.isoformat()
     if scenario:
         excluded = {str(x) for x in scenario.excluded_recurring_ids}
         retained = []

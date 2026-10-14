@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 
 class AccountBase(BaseModel):
@@ -25,6 +25,12 @@ class AccountCreate(BaseModel):
     minimum_payment: Optional[Decimal] = None
     card_brand: Optional[str] = None
     card_level: Optional[str] = None
+
+    @model_validator(mode="after")
+    def loan_balance(self):
+        if self.type == "loan" and self.balance > 0:
+            raise ValueError("Loan balance must be zero or negative (outstanding debt)")
+        return self
 
 
 class AccountUpdate(BaseModel):

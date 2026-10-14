@@ -48,6 +48,7 @@ const ACCOUNT_TYPE_OPTIONS = [
   { value: 'checking', labelKey: 'accounts.typeChecking' },
   { value: 'savings', labelKey: 'accounts.typeSavings' },
   { value: 'credit_card', labelKey: 'accounts.typeCreditCard' },
+  { value: 'loan', labelKey: 'accounts.typeLoan' },
   { value: 'investment', labelKey: 'accounts.typeInvestment' },
   { value: 'wallet', labelKey: 'accounts.typeWallet' },
 ] as const
@@ -820,6 +821,7 @@ function AccountDialog({
                     type="number"
                     step="0.01"
                     min={type === 'credit_card' ? '0' : undefined}
+                    max={type === 'loan' ? '0' : undefined}
                     value={balance}
                     onChange={(e) => setBalance(e.target.value)}
                   />
@@ -836,6 +838,11 @@ function AccountDialog({
               {type === 'credit_card' && (
                 <p className="text-xs text-muted-foreground -mt-2">
                   {t('accounts.balanceCreditCardHint')}
+                </p>
+              )}
+              {type === 'loan' && (
+                <p className="text-xs text-muted-foreground -mt-2">
+                  {t('accounts.balanceLoanHint')}
                 </p>
               )}
             </>
