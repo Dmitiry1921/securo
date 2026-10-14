@@ -1204,6 +1204,17 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
     )
     warnings.extend(simulated_warnings)
     warnings.extend(overdue)
+    for account in accounts:
+        if account.account_type in {"credit_card", "loan"} and account.balance < 0:
+            warnings.append(
+                ForecastWarning(
+                    code="debt_terms_unmodeled",
+                    account_id=str(account.account_id),
+                    currency=account.currency,
+                    detail="Only configured debt payments are projected; future bank interest "
+                    "and recalculated minimum payments are not modeled.",
+                )
+            )
     if data.unpaired_transfers:
         warnings.append(
             ForecastWarning(code="unpaired_transfers", detail=str(data.unpaired_transfers))
@@ -1229,7 +1240,7 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
         budget_periods=periods,
         history_recommendations=await history_recommendations(session, workspace_id, rules, start),
         monthly_plan=monthly_income_plan(
-            accounts, events, periods, rules, rates, start, end, goals=goals
+            accounts, events, periods, rules, rates, start, end, goals=goals, flows=flows
         ),
         ending_balance=Decimal(timeline[-1]["balance"])
         if timeline[-1]["balance"] is not None
@@ -1240,7 +1251,7 @@ async def get_forecast(session, workspace_id, user_id, request: ForecastRequest)
     )
 
 
-def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, goals=()):
+def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, goals=(), flows=()):
     """Income envelopes for complete future months, using the shared plan's inputs.
 
     Full budget cycles are attributed to their start month. This is an income
@@ -1298,6 +1309,11 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
             ),
         )
     event_by_id = {e["id"]: e for e in events}
+    account_types = {str(a.account_id): getattr(a, "account_type", "checking") for a in accounts}
+    # A debit can settle before its receipt; keep the original destination so
+    # repayment consumes income in the debit month, including across the horizon.
+    transfer_destinations = {f.id: f.to_account_id for f in flows if f.kind == "transfer"}
+    liability_types = {"credit_card", "loan"}
     covered = {fid for period in periods for fid in period.get("committed_flow_ids", [])}
     expense_rules = {str(rule.id): rule for rule in rules}
     display_currencies = sorted(set(rates) | {a.currency for a in accounts})
@@ -1334,7 +1350,7 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
         if last > end:
             break
         month_events = [e for e in events if cursor.isoformat() <= e["date"] <= last.isoformat()]
-        incomes, costs, payments = [], [], []
+        incomes, costs, payments, debt_payments = [], [], [], []
         contributions = {key: {**item, "sources": []} for key, item in destinations.items()}
         for period in periods:
             if period["start"][:7] != cursor.isoformat()[:7]:
@@ -1358,6 +1374,7 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
             )
         for event in month_events:
             kind, pid = event["kind"], event.get("from_pocket_id")
+            destination = event.get("to_account_id") or transfer_destinations.get(event["id"])
             item = dict(
                 id=event["id"],
                 name=event["description"],
@@ -1374,6 +1391,16 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
                 and not event["from_account_id"]
             ):
                 incomes.append({**item, "account_id": event["to_account_id"]})
+            elif (
+                kind == "transfer"
+                and event.get("from_account_id")
+                and account_types.get(destination) in liability_types
+                and account_types.get(event["from_account_id"]) not in liability_types
+            ):
+                payment = {**item, "to_account_id": destination}
+                # Savings contributions already consume the income envelope.
+                # Repaying from those pockets must not consume it a second time.
+                (payments if pid in saving_ids else debt_payments).append(payment)
             elif (
                 kind == "allocation"
                 and event.get("to_pocket_id") in pocket_keys
@@ -1419,11 +1446,14 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
             row["values"] = valuations([(s["amount"], s["currency"]) for s in row["sources"]])
         totals = {}
         for currency in display_currencies:
-            income, living, saved, payments_total = (
-                total(rows, currency) for rows in [incomes, costs, contribution_rows, payments]
+            income, living, saved, debt, payments_total = (
+                total(rows, currency)
+                for rows in [incomes, costs, contribution_rows, debt_payments, payments]
             )
             requirements = (
-                money(living + saved) if living is not None and saved is not None else None
+                money(living + saved + debt)
+                if living is not None and saved is not None and debt is not None
+                else None
             )
             remaining = (
                 money(income - requirements)
@@ -1436,6 +1466,7 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
                     income=income,
                     living=living,
                     contributions=saved,
+                    debt=debt,
                     requirements=requirements,
                     remaining=remaining,
                     saved_payments=payments_total,
@@ -1448,6 +1479,7 @@ def monthly_income_plan(accounts, events, periods, rules, rates, start, end, *, 
                 end=last.isoformat(),
                 incomes=incomes,
                 costs=costs,
+                debt_payments=debt_payments,
                 contributions=contribution_rows,
                 saved_payments=payments,
                 totals=totals,

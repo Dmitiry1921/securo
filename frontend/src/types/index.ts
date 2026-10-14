@@ -1937,11 +1937,13 @@ export interface MonthlyPlanAmount {
   id: string; name: string; amount: string; currency: string
   date?: string; start?: string; end?: string; account_id?: string | null
   pocket_id?: string | null; rule_id?: string | null; budget_id?: string | null
+  to_account_id?: string | null
   values: Record<string, string | null>
 }
 export interface MonthlyIncomePlan {
   month: string; start: string; end: string
   incomes: MonthlyPlanAmount[]; costs: MonthlyPlanAmount[]; saved_payments: MonthlyPlanAmount[]
+  debt_payments?: MonthlyPlanAmount[]
   contributions: {
     id: string; name: string; goal_id: string | null; values: Record<string, string | null>
     sources: (MonthlyPlanAmount & {
@@ -1951,6 +1953,6 @@ export interface MonthlyIncomePlan {
   }[]
   totals: Record<string, {
     income: string | null; living: string | null; contributions: string | null; requirements: string | null
-    remaining: string | null; saved_payments: string | null
+    remaining: string | null; saved_payments: string | null; debt?: string | null
   }>
 }

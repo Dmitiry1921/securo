@@ -86,7 +86,7 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
   }
   const firstDeficit = data.warnings.filter(w => w.date && ['account_deficit', 'protected_funds_required', 'unfunded_allocation'].includes(w.code))
     .sort((a, b) => a.date!.localeCompare(b.date!))[0]
-  const incomplete = data.warnings.some(w => ['no_expense_rules', 'uncovered_budget', 'unclassified_actual', 'unmapped_actual_category', 'unpaired_transfers', 'missing_account', 'missing_pocket'].includes(w.code))
+  const incomplete = data.warnings.some(w => ['no_expense_rules', 'uncovered_budget', 'unclassified_actual', 'unmapped_actual_category', 'unpaired_transfers', 'missing_account', 'missing_pocket', 'debt_terms_unmodeled'].includes(w.code))
   const showDate = (on: string) => {
     onSelectDate(on)
     document.getElementById('funding-details')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -109,6 +109,7 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
     {!selected || !totals ? <p role="status" className="text-sm text-muted-foreground py-4">{t(data.monthly_plan ? 'monthlyPlan.noMonths' : 'monthlyPlan.unavailable')}</p> : <>
       <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs mb-2" aria-label={t('monthlyPlan.legend')}>
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 bg-muted-foreground/60" />{t('monthlyPlan.living')}</span>
+        {months.some(m => Number(m.totals[currency]?.debt) > 0) && <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ background: 'var(--destructive)' }} />{t('monthlyPlan.debt')}</span>}
         {savings.filter(s => months.some(m => Number(m.contributions.find(c => c.id === s.id)?.values[currency]) > 0)).map(s => <span key={s.id} className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ background: color(s.id) }} />{s.name}</span>)}
         <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ background: 'var(--chart-3)' }} />{t('monthlyPlan.remaining')}</span>
         <span className="inline-flex items-center gap-1.5"><span className="h-3 border-l-2 border-foreground" />{t('monthlyPlan.incomeBoundary')}</span>
@@ -132,6 +133,7 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
             {known && <span className="relative block h-5 mb-2" aria-hidden="true">
               <span className="flex h-full">
                 {segment('living', t('monthlyPlan.living'), amounts.living, 'color-mix(in srgb, var(--muted-foreground) 60%, transparent)')}
+                {segment('debt', t('monthlyPlan.debt'), amounts.debt, 'var(--destructive)')}
                 {month.contributions.map(c => segment(c.id, c.name, c.values[currency], color(c.id)))}
                 {remainder > 0 && segment('remaining', t('monthlyPlan.remaining'), amounts.remaining, 'var(--chart-3)')}
               </span>
@@ -155,6 +157,14 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
                 <div className="flex justify-between gap-3 font-medium"><dt>{t('monthlyPlan.income')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.income)}</dd></div>
                 {month.incomes.map(income => <div key={income.id} className="flex justify-between gap-3 text-xs text-muted-foreground"><dt>{date(income.date!)} · {income.name} · {accountName(income.account_id)}</dt><dd className="tabular-nums whitespace-nowrap">{value(income.amount, income.currency)}</dd></div>)}
                 <div className="border-t border-border pt-2"><div className="flex justify-between gap-3"><dt>{t('monthlyPlan.living')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.living)}</dd></div>{expenseDetails(month.costs)}</div>
+                {(month.debt_payments?.length ?? 0) > 0 && <>
+                  <div className="flex justify-between gap-3 font-medium"><dt>{t('monthlyPlan.debt')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.debt)}</dd></div>
+                  {month.debt_payments?.map(payment => <div key={payment.id} className="text-xs text-muted-foreground">
+                    <div className="flex justify-between gap-3"><dt>{date(payment.date!)} · {payment.name}</dt><dd className="tabular-nums whitespace-nowrap">{value(payment.amount, payment.currency)}</dd></div>
+                    <p className="mt-1">{accountName(payment.account_id)} → {accountName(payment.to_account_id)}</p>
+                  </div>)}
+                  <p className="text-xs text-muted-foreground">{t('monthlyPlan.debtHelp')}</p>
+                </>}
                 <div className="flex justify-between gap-3 font-medium"><dt>{t('monthlyPlan.contributionsTotal')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.contributions)}</dd></div>
                 {month.contributions.map(c => <div key={c.id} className="flex justify-between gap-3 text-xs text-muted-foreground"><dt>{c.name}</dt><dd className="tabular-nums whitespace-nowrap">{value(c.values[currency])}</dd></div>)}
                 <div className={`flex justify-between gap-3 border-t border-border pt-3 font-medium ${known && remainder < 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}><dt>{t('monthlyPlan.remaining')}</dt><dd className="tabular-nums whitespace-nowrap">{value(amounts?.remaining)}</dd></div>
@@ -182,6 +192,10 @@ export function MonthlyIncomePlan({ data, onSelectDate }: { data: FundingForecas
               <p>{t('monthlyPlan.livingSource')}</p>
               {expenseDetails(selected.costs)}
             </>} />
+            {selected.debt_payments?.map(payment => <PlanRow key={payment.id} name={payment.name} amount={value(payment.values[currency])} source={<>
+              <p>{date(payment.date!)} · <Link to={`/accounts/${payment.account_id}`} className="text-primary hover:underline">{accountName(payment.account_id)}</Link> → <Link to={`/accounts/${payment.to_account_id}`} className="text-primary hover:underline">{accountName(payment.to_account_id)}</Link></p>
+              <p className="text-xs mt-1">{t('monthlyPlan.debtHelp')}</p>
+            </>} />)}
             {selected.contributions.map(c => <PlanRow key={c.id} name={c.goal_id ? <Link to={`/goals/${c.goal_id}`} className="hover:text-primary hover:underline">{c.name}</Link> : c.name} amount={value(c.values[currency])}
               source={c.sources.length ? <ul className="space-y-3">{c.sources.map(source => <li key={source.id}>
                 <p>{date(source.date!)} · {source.income_name ?? t('monthlyPlan.otherFunds')}</p>
