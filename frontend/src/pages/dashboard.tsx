@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { getAccountLabel, getAccountName, sortAccountsByAbsoluteBalance, sumAccountBalances } from '@/lib/account-utils'
+import { getCompactAccountLabel } from '@/lib/bank-branding'
 import { currentMonth, shiftMonth, monthLastDay, monthLabel, monthRange } from '@/lib/month-utils'
 import { useTranslation } from 'react-i18next'
 import { useDisplayLocale, useDateLocale } from '@/hooks/use-display-locale'
@@ -678,29 +679,25 @@ export default function DashboardPage() {
                   {sortedAvailableBalanceAccounts.map((acc) => {
                     const bal = Number(acc.balance_primary ?? acc.current_balance)
                     const balCurrency = acc.balance_primary != null ? primaryCurrency : acc.currency
-                    // A link, not a click handler: the chip is a navigation
-                    // target, so it gets keyboard focus and cmd-click into a
-                    // new tab for free. Scale on hover only, which the
-                    // compositor handles without touching layout.
+                    const fullLabel = getAccountLabel(acc)
+                    const formattedBalance = mask(formatCurrency(bal, balCurrency, locale))
                     return (
-                      <Link
-                        key={acc.id}
-                        to={`/accounts/${acc.id}`}
-                        className="group inline-flex items-center gap-1 text-[11px] pl-1 pr-2 py-0.5 rounded-full border border-border bg-background transition-transform duration-150 ease-out hover:scale-105 hover:border-foreground/25 focus:outline-none focus-visible:ring-ring/30 focus-visible:ring-[2px]"
-                      >
-                        {/* The bank mark is what the eye actually sorts on in a
-                            row of chips; the name is the confirmation. Falls
-                            back to the account-type icon, so manual accounts
-                            and providers without a logo still line up. */}
-                        <AccountIcon account={acc} size="xs" className="w-4 h-4 rounded-md" />
-                        {/* getAccountLabel, not getAccountName: two accounts can
-                            share a name, and the mask suffix is what tells them
-                            apart in a row of chips. */}
-                        <span className="text-muted-foreground group-hover:text-foreground transition-colors">{getAccountLabel(acc)}</span>
-                        <span className={`font-semibold tabular-nums ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>
-                          {mask(formatCurrency(bal, balCurrency, locale))}
-                        </span>
-                      </Link>
+                      <Tooltip key={acc.id}>
+                        <TooltipTrigger asChild>
+                          <Link
+                            to={`/accounts/${acc.id}`}
+                            aria-label={`${fullLabel}: ${formattedBalance}`}
+                            className="group inline-flex items-center gap-1.5 text-[11px] pl-0.5 pr-2.5 py-0.5 rounded-full border border-border bg-background hover:border-foreground/25 focus:outline-none focus-visible:ring-ring/30 focus-visible:ring-[2px]"
+                          >
+                            <AccountIcon account={acc} size="sm" className="rounded-full" />
+                            <span className="text-muted-foreground group-hover:text-foreground transition-colors">{getCompactAccountLabel(acc)}</span>
+                            <span className={`font-semibold tabular-nums ${bal < 0 ? 'text-rose-500' : 'text-foreground'}`}>
+                              {formattedBalance}
+                            </span>
+                          </Link>
+                        </TooltipTrigger>
+                        <TooltipContent>{fullLabel}</TooltipContent>
+                      </Tooltip>
                     )
                   })}
                 </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Building2 } from 'lucide-react'
 import { getAccountTypeConfig } from '@/lib/account-type-config'
+import { getAccountBankBrand } from '@/lib/bank-branding'
 import { cn } from '@/lib/utils'
 
 const SIZES = {
@@ -20,15 +21,23 @@ export function AccountIcon({
   size = 'md',
   className,
 }: {
-  account: { type: string; institution_logo_url?: string | null }
+  account: {
+    type: string
+    name?: string
+    display_name?: string | null
+    institution_name?: string | null
+    institution_logo_url?: string | null
+  }
   size?: keyof typeof SIZES
   className?: string
 }) {
-  const [errored, setErrored] = useState(false)
+  const [failedLogos, setFailedLogos] = useState<string[]>([])
   const cfg = getAccountTypeConfig(account.type)
   const Icon = cfg.icon
-  const logo = account.institution_logo_url
-  const showImage = !!logo && !errored
+  const localLogo = getAccountBankBrand(account)?.logo
+  const providerLogo = account.institution_logo_url
+  const logo = [providerLogo, localLogo].find((url) => url && !failedLogos.includes(url))
+  const showImage = !!logo
   const { tile, icon } = SIZES[size]
 
   return (
@@ -45,7 +54,7 @@ export function AccountIcon({
           src={logo!}
           alt=""
           className="w-full h-full object-contain"
-          onError={() => setErrored(true)}
+          onError={() => setFailedLogos((failed) => [...failed, logo!])}
         />
       ) : (
         <Icon size={icon} className={cfg.color} />
